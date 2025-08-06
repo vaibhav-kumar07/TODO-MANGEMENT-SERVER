@@ -1,0 +1,635 @@
+@url = http://localhost:3000/api/v1
+@adminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2ODhkMzBkMWUwMGEyZDEzYzA5Zjg0NzQiLCJlbWFpbCI6ImFkbWluQHRhc2ttYW5hZ2VtZW50LmNvbSIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc1NDA4MzgzOCwiZXhwIjoxNzU0MTcwMjM4fQ.9wD5MCJOVHbBiC583AtJWh2MUnT-LTFsMvzqoGgd0-w
+@managerToken = 
+@memberToken = 
+@adminRefreshToken = 
+
+### ========================================
+### PHASE 1: NEW AUTHENTICATION FEATURES
+### ========================================
+
+### ========================================
+### 1. PASSWORD RESET FLOW
+### ========================================
+
+### Request Password Reset (Self)
+POST {{url}}/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "viranshk7@gmail.com"
+}
+
+### Reset Password with Token
+POST {{url}}/auth/reset-password
+Content-Type: application/json
+
+{
+  "token": "your-reset-token-here",
+  "newPassword": "NewSecurePassword123!"
+}
+
+### Admin Reset User Password
+POST {{url}}/auth/admin/reset-password
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "email": "member@taskmanagement.com",
+  "newPassword": "AdminResetPassword123!"
+}
+
+### ========================================
+### 2. PROFILE UPDATE
+### ========================================
+
+### Update Profile (Basic Info)
+PUT {{url}}/auth/profile
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "firstName": "Updated",
+  "lastName": "Administrator"
+}
+
+### Update Profile with Password Change
+PUT {{url}}/auth/profile
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "firstName": "Updated",
+  "lastName": "Administrator",
+  "currentPassword": "Admin123!",
+  "newPassword": "NewSecurePassword123!"
+}
+
+### Update Profile (Password Only)
+PUT {{url}}/auth/profile
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "currentPassword": "Admin123!",
+  "newPassword": "NewSecurePassword123!"
+}
+
+### ========================================
+### 3. LOGOUT
+### ========================================
+
+### Logout User
+POST {{url}}/auth/logout
+Authorization: Bearer {{adminToken}}
+
+### ========================================
+### 4. VALIDATION TESTS
+### ========================================
+
+### Invalid Password Reset Token
+POST {{url}}/auth/reset-password
+Content-Type: application/json
+
+{
+  "token": "invalid-token",
+  "newPassword": "NewPassword123!"
+}
+
+### Expired Password Reset Token
+POST {{url}}/auth/reset-password
+Content-Type: application/json
+
+{
+  "token": "expired-token-here",
+  "newPassword": "NewPassword123!"
+}
+
+### Profile Update with Wrong Current Password
+PUT {{url}}/auth/profile
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "currentPassword": "WrongPassword",
+  "newPassword": "NewPassword123!"
+}
+
+### Profile Update without Current Password
+PUT {{url}}/auth/profile
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "newPassword": "NewPassword123!"
+}
+
+### Admin Reset Password (Non-Admin User)
+POST {{url}}/auth/admin/reset-password
+Authorization: Bearer {{memberToken}}
+Content-Type: application/json
+
+{
+  "email": "member@taskmanagement.com",
+  "newPassword": "NewPassword123!"
+}
+
+### ========================================
+### 5. ROLE-BASED ACCESS TESTS
+### ========================================
+
+### Manager Tries Admin Reset Password (Should Fail)
+POST {{url}}/auth/admin/reset-password
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{
+  "email": "member@taskmanagement.com",
+  "newPassword": "NewPassword123!"
+}
+
+### Member Tries Admin Reset Password (Should Fail)
+POST {{url}}/auth/admin/reset-password
+Authorization: Bearer {{memberToken}}
+Content-Type: application/json
+
+{
+  "email": "member@taskmanagement.com",
+  "newPassword": "NewPassword123!"
+}
+
+### ========================================
+### 6. SUCCESS SCENARIOS
+### ========================================
+
+### Complete Password Reset Flow
+# Step 1: Request reset
+POST {{url}}/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "admin@taskmanagement.com"
+}
+
+# Step 2: Use token from email to reset password
+POST {{url}}/auth/reset-password
+Content-Type: application/json
+
+{
+  "token": "token-from-email",
+  "newPassword": "NewSecurePassword123!"
+}
+
+# Step 3: Login with new password
+POST {{url}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@taskmanagement.com",
+  "password": "NewSecurePassword123!"
+}
+
+### Complete Profile Update Flow
+# Step 1: Update profile
+PUT {{url}}/auth/profile
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "firstName": "Updated",
+  "lastName": "Administrator"
+}
+
+# Step 2: Verify profile updated
+GET {{url}}/auth/profile
+Authorization: Bearer {{adminToken}}
+
+### ========================================
+### 7. SECURITY TESTS
+### ========================================
+
+### Forgot Password with Non-existent Email
+POST {{url}}/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "nonexistent@taskmanagement.com"
+}
+
+### Forgot Password with Invalid Email Format
+POST {{url}}/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "invalid-email-format"
+}
+
+### Reset Password with Weak Password
+POST {{url}}/auth/reset-password
+Content-Type: application/json
+
+{
+  "token": "valid-token",
+  "newPassword": "123"
+}
+
+### ========================================
+### 8. ERROR HANDLING TESTS
+### ========================================
+
+### Access Protected Endpoints Without Token
+PUT {{url}}/auth/profile
+Content-Type: application/json
+
+{
+  "firstName": "Test"
+}
+
+POST {{url}}/auth/admin/reset-password
+Content-Type: application/json
+
+{
+  "email": "test@taskmanagement.com",
+  "newPassword": "NewPassword123!"
+}
+
+### Access Logout Without Token
+POST {{url}}/auth/logout
+
+### ========================================
+### ORIGINAL AUTH TESTS (KEPT FOR REFERENCE)
+### ========================================
+
+### ========================================
+### 1. ADMIN LOGIN
+### ========================================
+# @name adminLogin
+POST {{url}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@taskmanagement.com",
+  "password": "Admin123!"
+}
+
+### ========================================
+### 2. GET ADMIN PROFILE
+### ========================================
+# @name adminProfile
+GET {{url}}/auth/profile
+Authorization: Bearer {{adminToken}}
+
+### ========================================
+### 3. ADMIN INVITES MANAGER
+### ========================================
+# @name inviteManager
+POST {{url}}/auth/invite
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "email": "viranshk7@gmail.com",
+  "firstName": "John",
+  "lastName": "Manager",
+  "role": "MANAGER",
+  "teamName": "Development Team",
+  "teamDescription": "Software development team"
+}
+
+### ========================================
+### 4. ADMIN INVITES MEMBER
+### ========================================
+# @name inviteMember
+POST {{url}}/auth/invite
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "email": "member@taskmanagement.com",
+  "firstName": "Jane",
+  "lastName": "Member",
+  "role": "MEMBER",
+  "teamName": "QA Team",
+  "teamDescription": "Quality assurance team"
+}
+
+### ========================================
+### 5. MANAGER LOGIN
+### ========================================
+# @name managerLogin
+POST {{url}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "manager@taskmanagement.com",
+  "password": "{{$randomPassword}}"
+}
+
+### ========================================
+### 6. GET MANAGER PROFILE
+### ========================================
+# @name managerProfile
+GET {{url}}/auth/profile
+Authorization: Bearer {{managerToken}}
+
+### ========================================
+### 7. MANAGER INVITES MEMBER (SHOULD WORK)
+### ========================================
+# @name managerInviteMember
+POST {{url}}/auth/invite
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{
+  "email": "developer@taskmanagement.com",
+  "firstName": "Mike",
+  "lastName": "Developer",
+  "role": "MEMBER"
+}
+
+### ========================================
+### 8. MANAGER INVITES MANAGER (SHOULD FAIL)
+### ========================================
+# @name managerInviteManager
+POST {{url}}/auth/invite
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{
+  "email": "another-manager@taskmanagement.com",
+  "firstName": "Sarah",
+  "lastName": "Manager",
+  "role": "MANAGER"
+}
+
+### ========================================
+### 9. MEMBER LOGIN
+### ========================================
+# @name memberLogin
+POST {{url}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "member@taskmanagement.com",
+  "password": "{{$randomPassword}}"
+}
+
+### ========================================
+### 10. GET MEMBER PROFILE
+### ========================================
+# @name memberProfile
+GET {{url}}/auth/profile
+Authorization: Bearer {{memberToken}}
+
+### ========================================
+### 11. MEMBER INVITES USER (SHOULD FAIL)
+### ========================================
+# @name memberInviteUser
+POST {{url}}/auth/invite
+Authorization: Bearer {{memberToken}}
+Content-Type: application/json
+
+{
+  "email": "newuser@taskmanagement.com",
+  "firstName": "New",
+  "lastName": "User",
+  "role": "MEMBER"
+}
+
+### ========================================
+### 12. REFRESH TOKEN (ADMIN)
+### ========================================
+# @name refreshToken
+POST {{url}}/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{adminRefreshToken}}"
+}
+
+### ========================================
+### 13. INVALID LOGIN ATTEMPTS
+### ========================================
+
+### Wrong Password
+POST {{url}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@taskmanagement.com",
+  "password": "wrongpassword"
+}
+
+### Non-existent User
+POST {{url}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "nonexistent@taskmanagement.com",
+  "password": "Admin123!"
+}
+
+### Invalid Email Format
+POST {{url}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "invalid-email",
+  "password": "Admin123!"
+}
+
+### ========================================
+### 14. INVALID INVITATION ATTEMPTS
+### ========================================
+
+### Duplicate Email Invitation
+POST {{url}}/auth/invite
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "email": "admin@taskmanagement.com",
+  "firstName": "Duplicate",
+  "lastName": "User",
+  "role": "MEMBER"
+}
+
+### Invalid Role
+POST {{url}}/auth/invite
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "email": "invalid@taskmanagement.com",
+  "firstName": "Invalid",
+  "lastName": "Role",
+  "role": "INVALID_ROLE"
+}
+
+### Missing Required Fields
+POST {{url}}/auth/invite
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "email": "incomplete@taskmanagement.com",
+  "firstName": "Incomplete"
+}
+
+### ========================================
+### 15. UNAUTHORIZED ACCESS TESTS
+### ========================================
+
+### Access Profile Without Token
+GET {{url}}/auth/profile
+
+### Access Invite Without Token
+POST {{url}}/auth/invite
+Content-Type: application/json
+
+{
+  "email": "test@taskmanagement.com",
+  "firstName": "Test",
+  "lastName": "User",
+  "role": "MEMBER"
+}
+
+### Access Profile With Invalid Token
+GET {{url}}/auth/profile
+Authorization: Bearer invalid-token
+
+### ========================================
+### 16. TOKEN VALIDATION TESTS
+### ========================================
+
+### Expired Token Test (if you have one)
+GET {{url}}/auth/profile
+Authorization: Bearer expired-token-here
+
+### Malformed Token
+GET {{url}}/auth/profile
+Authorization: Bearer malformed.token.here
+
+### ========================================
+### 17. ROLE-BASED ACCESS TESTS
+### ========================================
+
+### Admin Accessing Admin-Only Endpoints
+POST {{url}}/auth/invite
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "email": "admin2@taskmanagement.com",
+  "firstName": "Admin",
+  "lastName": "Two",
+  "role": "ADMIN"
+}
+
+### Manager Accessing Member-Only Endpoints
+POST {{url}}/auth/invite
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{
+  "email": "member2@taskmanagement.com",
+  "firstName": "Member",
+  "lastName": "Two",
+  "role": "MEMBER"
+}
+
+### ========================================
+### 18. VALIDATION TESTS
+### ========================================
+
+### Invalid Email Format in Invitation
+POST {{url}}/auth/invite
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "email": "invalid-email-format",
+  "firstName": "Test",
+  "lastName": "User",
+  "role": "MEMBER"
+}
+
+### Short Password in Login
+POST {{url}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@taskmanagement.com",
+  "password": "123"
+}
+
+### Empty Fields
+POST {{url}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "",
+  "password": ""
+}
+
+### ========================================
+### 19. SUCCESS SCENARIOS
+### ========================================
+
+### Successful Admin Login and Profile Access
+# Step 1: Login
+POST {{url}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@taskmanagement.com",
+  "password": "Admin123!"
+}
+
+# Step 2: Use the token from response to access profile
+GET {{url}}/auth/profile
+Authorization: Bearer {{adminToken}}
+
+### Successful User Invitation by Admin
+POST {{url}}/auth/invite
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "email": "successful@taskmanagement.com",
+  "firstName": "Successful",
+  "lastName": "User",
+  "role": "MEMBER",
+  "teamName": "New Team",
+  "teamDescription": "A new team created by admin"
+}
+
+### ========================================
+### 20. CLEANUP TESTS (Optional)
+### ========================================
+
+### Test Database Cleanup (if needed)
+# These would be custom endpoints for testing purposes
+# GET {{url}}/test/cleanup
+# Authorization: Bearer {{adminToken}}
+
+### ========================================
+### NOTES:
+### ========================================
+# 1. Replace {{adminToken}}, {{managerToken}}, {{memberToken}} with actual tokens from login responses
+# 2. The {{$randomPassword}} will be generated by the system and sent via email
+# 3. Test the refresh token functionality with the refreshToken from login response
+# 4. All endpoints should return appropriate HTTP status codes:
+#    - 200: Success
+#    - 201: Created
+#    - 400: Bad Request
+#    - 401: Unauthorized
+#    - 403: Forbidden
+#    - 404: Not Found
+#    - 422: Validation Error
+# 5. Check response bodies for proper error messages and data structure
+# 6. Phase 1 features include:
+#    - Password reset (self and admin)
+#    - Profile updates (safe fields only)
+#    - Logout functionality
+#    - Enhanced security and validation

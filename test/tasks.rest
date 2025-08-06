@@ -1,0 +1,324 @@
+### Task Management API Tests - Single Manager per Team
+
+@adminToken= ""
+@teamId= ""
+@managerToken= ""
+@memberToken= ""
+@memberId= ""
+@taskId= ""
+@personalTaskId= ""
+@otherTeamTaskId= ""
+@otherPersonalTaskId= ""
+@managerEmail= ""
+@memberEmail= ""
+@adminEmail= ""
+@adminPassword= ""
+@managerEmail= ""
+@memberEmail= ""
+@adminEmail= ""
+@adminPassword= ""
+@managerEmail= ""
+@memberEmail= ""
+@url= http://localhost:3000/api/v1
+
+### ========================================
+### PHASE 1: SETUP (ADMIN)
+### ========================================
+
+### 1. Login as Admin
+POST {{url}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{adminEmail}}",
+  "password": "{{adminPassword}}"
+}
+
+### 2. Create Team
+POST {{url}}/teams
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "Development Team",
+  "description": "Software development team"
+}
+
+### 3. Create Manager User
+POST {{url}}/auth/invite-user
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "email": "{{managerEmail}}",
+  "firstName": "John",
+  "lastName": "Manager",
+  "role": "MANAGER",
+  "teamId": "{{teamId}}"
+}
+
+### 4. Create Member User
+POST {{url}}/auth/invite-user
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "email": "member@example.com",
+  "firstName": "Alice",
+  "lastName": "Member",
+  "role": "MEMBER",
+  "teamId": "{{teamId}}"
+}
+
+### ========================================
+### PHASE 2: AUTHENTICATION
+### ========================================
+
+### 5. Login as Manager
+POST {{url}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "manager@example.com",
+  "password": "password123"
+}
+
+### 6. Login as Member
+POST {{url}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "member@example.com",
+  "password": "password123"
+}
+
+### ========================================
+### PHASE 3: TASK CREATION
+### ========================================
+
+### 7. Create Team Task (Manager)
+POST {{url}}/tasks
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{
+  "title": "Design Homepage",
+  "description": "Create a modern homepage design for the company website",
+  "priority": "HIGH",
+  "dueDate": "2024-02-15T00:00:00.000Z",
+  "assignedTo": "{{memberId}}",
+  "isPersonal": false
+}
+
+### 8. Create Another Team Task (Manager)
+POST {{url}}/tasks
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{
+  "title": "Fix Login Bug",
+  "description": "Investigate and fix the authentication issue",
+  "priority": "MEDIUM",
+  "dueDate": "2024-02-20T00:00:00.000Z",
+  "assignedTo": "{{memberId}}",
+  "isPersonal": false
+}
+
+### 9. Create Personal Task (Member)
+POST {{url}}/tasks
+Authorization: Bearer {{memberToken}}
+Content-Type: application/json
+
+{
+  "title": "Learn React",
+  "description": "Study React fundamentals and hooks",
+  "priority": "MEDIUM",
+  "dueDate": "2024-02-25T00:00:00.000Z",
+  "isPersonal": true
+}
+
+### ========================================
+### PHASE 4: TASK VIEWS
+### ========================================
+
+### 10. Get My Tasks (Member) - Team tasks assigned to member
+    GET {{url}}/tasks?view=my-tasks
+Authorization: Bearer {{memberToken}}
+
+### 11. Get My Personal Tasks (Member) - Personal tasks
+GET {{url}}/tasks?view=my-personal-tasks
+Authorization: Bearer {{memberToken}}
+
+### 12. Get Created by Me (Manager) - Team tasks created by manager
+GET {{url}}/tasks?view=created-by-me
+Authorization: Bearer {{managerToken}}
+
+### 13. Get Team Tasks (Manager) - All team tasks overview
+GET {{url}}/tasks?view=team-tasks
+Authorization: Bearer {{managerToken}}
+
+### ========================================
+### PHASE 5: TASK STATUS UPDATES
+### ========================================
+
+### 14. Update Task Status to IN_PROGRESS (Member)
+PATCH {{url}}/tasks/{{taskId}}
+Authorization: Bearer {{memberToken}}
+Content-Type: application/json
+
+{
+  "status": "IN_PROGRESS"
+}
+
+### 15. Update Task Status to REVIEW (Member)
+PATCH {{url}}/tasks/{{taskId}}
+Authorization: Bearer {{memberToken}}
+Content-Type: application/json
+
+{
+  "status": "REVIEW"
+}
+
+### 16. Update Task Status to DONE (Manager)
+PATCH {{url}}/tasks/{{taskId}}
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{
+  "status": "DONE"
+}
+
+### ========================================
+### PHASE 6: TASK MANAGEMENT
+### ========================================
+
+### 17. Update Task Assignment (Manager)
+PATCH {{url}}/tasks/{{taskId}}
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{
+  "assignedTo": "{{memberId}}"
+}
+
+### 18. Update Task Details (Manager)
+PATCH {{url}}/tasks/{{taskId}}
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{
+  "title": "Updated Task Title",
+  "description": "Updated task description",
+  "priority": "LOW",
+  "dueDate": "2024-03-01T00:00:00.000Z"
+}
+
+### 19. Get Tasks with Status Filter (Member)
+GET {{url}}/tasks?view=my-tasks&status=IN_PROGRESS
+Authorization: Bearer {{memberToken}}
+
+### 20. Get Tasks with Priority Filter (Member)
+GET {{url}}/tasks?view=my-tasks&priority=HIGH
+Authorization: Bearer {{memberToken}}
+
+### 21. Get Specific Task (Member)
+  GET {{url}}/tasks/{{taskId}}
+Authorization: Bearer {{memberToken}}
+
+### ========================================
+### PHASE 7: TASK DELETION
+### ========================================
+
+### 22. Delete Personal Task (Member)
+DELETE {{url}}/tasks/{{personalTaskId}}
+Authorization: Bearer {{memberToken}}
+
+### 23. Delete Team Task (Manager)
+DELETE {{url}}/tasks/{{taskId}}
+Authorization: Bearer {{managerToken}}
+
+### ========================================
+### PHASE 8: ERROR TESTING
+### ========================================
+
+### 24. Test Manager Creating Personal Task (Should Fail)
+POST {{url}}/tasks
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{
+  "title": "Manager Personal Task",
+  "description": "This should fail - managers cannot create personal tasks",
+  "isPersonal": true
+}
+
+### 25. Test Member Creating Team Task (Should Fail)
+POST {{url}}/tasks
+Authorization: Bearer {{memberToken}}
+Content-Type: application/json
+
+{
+  "title": "Member Team Task",
+  "description": "This should fail - members cannot create team tasks",
+  "assignedTo": "{{memberId}}",
+  "isPersonal": false
+}
+
+### 26. Test Member Modifying Team Task Details (Should Fail)
+PATCH {{url}}/tasks/{{taskId}}
+Authorization: Bearer {{memberToken}}
+Content-Type: application/json
+
+{
+  "title": "Member trying to modify task",
+  "description": "This should fail - members cannot modify team task details"
+}
+
+### 27. Test Invalid Status Transition (Should Fail)
+PATCH {{url}}/tasks/{{taskId}}
+Authorization: Bearer {{memberToken}}
+Content-Type: application/json
+
+{
+  "status": "DONE"
+}
+
+### 28. Test Unauthorized Access (Should Fail)
+GET {{url}}/tasks/{{taskId}}
+Authorization: Bearer {{memberToken}}
+
+### 29. Test Manager Accessing Another Team's Task (Should Fail)
+GET {{url}}/tasks/{{otherTeamTaskId}}
+Authorization: Bearer {{managerToken}}
+
+### 30. Test Member Accessing Another Member's Personal Task (Should Fail)
+GET {{url}}/tasks/{{otherPersonalTaskId}}
+Authorization: Bearer {{memberToken}}
+
+### ========================================
+### TESTING NOTES
+### ========================================
+
+### Expected Results:
+### ✅ Success Cases:
+### - Manager can create team tasks and assign to members
+### - Member can create personal tasks
+### - Member can update status of assigned team tasks
+### - Manager can see all team tasks and manage them
+### - Proper filtering works for status and priority
+
+### ❌ Failure Cases:
+### - Manager cannot create personal tasks
+### - Member cannot create team tasks
+### - Member cannot modify team task details
+### - Invalid status transitions are rejected
+### - Unauthorized access is blocked
+
+### Variables to Set:
+### - adminToken: From admin login response
+### - teamId: From team creation response
+### - managerToken: From manager login response
+### - memberToken: From member login response
+### - memberId: From member user creation response
+### - taskId: From task creation response
+### - personalTaskId: From personal task creation response 
