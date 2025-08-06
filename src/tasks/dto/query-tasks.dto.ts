@@ -1,18 +1,8 @@
-import { IsOptional, IsEnum, IsString, IsBoolean } from 'class-validator';
+import { IsOptional, IsEnum, IsString, IsBoolean, IsNumber, Min, Max, IsDateString } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
 import { TaskStatus, TaskPriority } from '../schemas/task.schema';
 
-export enum TaskView {
-  MY_TASKS = 'my-tasks',
-  MY_PERSONAL_TASKS = 'my-personal-tasks',
-  CREATED_BY_ME = 'created-by-me',
-  TEAM_TASKS = 'team-tasks',
-}
-
 export class QueryTasksDto {
-  @IsOptional()
-  @IsEnum(TaskView)
-  view?: TaskView;
-
   @IsOptional()
   @IsEnum(TaskStatus)
   status?: TaskStatus;
@@ -27,5 +17,36 @@ export class QueryTasksDto {
 
   @IsOptional()
   @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true)
   isPersonal?: boolean;
+
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dueDateFrom?: string; // Filter tasks due from this date
+
+  @IsOptional()
+  @IsDateString()
+  dueDateTo?: string; // Filter tasks due until this date
+
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true)
+  overdue?: boolean; // Filter for overdue tasks only
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  page?: number = 1;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(100)
+  limit?: number = 10;
 } 

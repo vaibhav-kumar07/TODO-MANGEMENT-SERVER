@@ -1,12 +1,12 @@
 import { Controller, Get } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { AppConfigService } from './config/app.config.service';
 import { AppService } from './app.service';
 
 @Controller()
 export class AppController {
   constructor(
     private readonly appService: AppService,
-    private readonly configService: ConfigService,
+    private readonly configService: AppConfigService,
   ) {}
 
   @Get()
@@ -16,7 +16,8 @@ export class AppController {
 
   @Get('health')
   getHealth() {
-    const mongoUri = this.configService.get('database.uri');
+    const config = this.configService.loadConfig();
+    const mongoUri = config.database.uri;
     return {
       status: 'ok',
       database: mongoUri ? 'connected' : 'not configured',
@@ -26,7 +27,8 @@ export class AppController {
 
   @Get('db-status')
   getDatabaseStatus() {
-    const mongoUri = this.configService.get('database.uri');
+    const config = this.configService.loadConfig();
+    const mongoUri = config.database.uri;
     return {
       connected: mongoUri ? 'connected' : 'not configured',
       uri_set: mongoUri,

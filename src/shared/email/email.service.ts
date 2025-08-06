@@ -13,7 +13,7 @@ export class EmailService {
 
   private async initializeTransporter() {
     const emailUser = this.configService.get('EMAIL_USER');
-    const emailPassword = this.configService.get('EMAIL_PASSWORD');
+    const emailPassword = this.configService.get('EMAIL_PASS');
 
     // Check if email credentials are configured
     if (!emailUser || !emailPassword) {
@@ -24,9 +24,9 @@ export class EmailService {
 
     // For development, use Gmail or configure your SMTP
     this.transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 587,
-      secure: false,
+      host: this.configService.get('EMAIL_HOST', 'smtp.gmail.com'),
+      port: this.configService.get('EMAIL_PORT', 587),
+      secure: this.configService.get('EMAIL_SECURE', false),
       requireTLS: true,
       tls: {
         rejectUnauthorized: false,
@@ -456,6 +456,137 @@ export class EmailService {
     } catch (error) {
       this.logger.error(`Failed to send admin reset notification to ${email}:`, error);
       throw error;
+    }
+  }
+
+  async sendAdminPasswordGenerated(
+    email: string,
+    firstName: string,
+    lastName: string,
+    password: string,
+  ) {
+    const htmlContent = `
+      <div class="welcome-section">
+        <h2>👑 System Administrator Account Created</h2>
+        <p>Hello <strong>${firstName} ${lastName}</strong>,</p>
+        <p>Your system administrator account has been successfully created for the Task Management System.</p>
+        <p>You have full administrative privileges to manage users, teams, and system settings.</p>
+      </div>
+      
+      <div class="credentials-section">
+        <h3>🔐 Your Administrator Credentials</h3>
+        <div class="credential-item">
+          <span class="credential-label">Email:</span>
+          <span class="credential-value">${email}</span>
+        </div>
+        <div class="credential-item">
+          <span class="credential-label">Password:</span>
+          <span class="credential-value">
+            <span class="password-box">${password}</span>
+          </span>
+        </div>
+        <div class="credential-item">
+          <span class="credential-label">Role:</span>
+          <span class="credential-value">System Administrator</span>
+        </div>
+      </div>
+      
+      <div class="info-section">
+        <h4>⚠️ Security Notice</h4>
+        <p>• This is your initial password - please change it immediately after login</p>
+        <p>• Keep your credentials secure and don't share them</p>
+        <p>• You have full access to all system features and user management</p>
+      </div>
+      
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${this.configService.get('FRONTEND_URL')}" class="cta-button">
+          🚀 Access Admin Panel
+        </a>
+      </div>
+      
+      <p style="color: #666; font-size: 14px; text-align: center;">
+        If you have any questions about your administrator account, please contact the system administrator.
+      </p>
+    `;
+
+    const mailOptions = {
+      from: `"Task Management System" <${this.configService.get('EMAIL_USER')}>`,
+      to: email,
+      subject: '👑 System Administrator Account Created - Task Management System',
+      html: this.getEmailTemplate(htmlContent),
+    };
+
+    if (!this.transporter) {
+      this.logger.warn(`Email service disabled. Would have sent admin credentials to ${email}`);
+      return;
+    }
+
+    try {
+      await this.transporter.sendMail(mailOptions);
+      this.logger.log(`Admin credentials email sent to ${email}`);
+    } catch (error) {
+      this.logger.error(`Failed to send admin credentials email to ${email}:`, error);
+      throw error;
+    }
+  }
+
+  async testEmail(email: string) {
+    const htmlContent = `
+      <div class="welcome-section">
+        <h2>🧪 Email Service Test</h2>
+        <p>Hello there,</p>
+        <p>This is a test email to verify that the email service is working correctly.</p>
+      </div>
+      
+      <div class="info-section">
+        <h4>✅ Email Service Status</h4>
+        <p>• Email service is configured and working</p>
+        <p>• SMTP connection is established</p>
+        <p>• Emails can be sent successfully</p>
+      </div>
+      
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${this.configService.get('FRONTEND_URL')}" class="cta-button">
+          🚀 Visit Application
+        </a>
+      </div>
+      
+      <p style="color: #666; font-size: 14px; text-align: center;">
+        This test email was sent at ${new Date().toLocaleString()}
+      </p>
+    `;
+
+    const mailOptions = {
+      from: `"Task Management System" <${this.configService.get('EMAIL_USER')}>`,
+      to: email,
+      subject: '🧪 Email Service Test - Task Management System',
+      html: this.getEmailTemplate(htmlContent),
+    };
+
+    if (!this.transporter) {
+      this.logger.warn(`Email service disabled. Cannot send test email to ${email}`);
+      return {
+        success: false,
+        message: 'Email service is not configured',
+        error: 'EMAIL_SERVICE_DISABLED'
+      };
+    }
+
+    try {
+      await this.transporter.sendMail(mailOptions);
+      this.logger.log(`Test email sent to ${email}`);
+      return {
+        success: true,
+        message: 'Test email sent successfully',
+        email
+      };
+    } catch (error) {
+      this.logger.error(`Failed to send test email to ${email}:`, error);
+      return {
+        success: false,
+        message: 'Failed to send test email',
+        error: error.message
+      };
     }
   }
 } 

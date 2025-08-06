@@ -1,132 +1,56 @@
-### Task Management API Tests - Single Manager per Team
+### TASK MANAGEMENT API TESTS
+### Single Project Approach - Role-based Task Management
 
-@adminToken= ""
-@teamId= ""
-@managerToken= ""
-@memberToken= ""
-@memberId= ""
-@taskId= ""
-@personalTaskId= ""
-@otherTeamTaskId= ""
-@otherPersonalTaskId= ""
-@managerEmail= ""
-@memberEmail= ""
-@adminEmail= ""
-@adminPassword= ""
-@managerEmail= ""
-@memberEmail= ""
-@adminEmail= ""
-@adminPassword= ""
-@managerEmail= ""
-@memberEmail= ""
-@url= http://localhost:3000/api/v1
+### PHASE 1: AUTHENTICATION SETUP
+# First, get tokens for different roles
+# Replace with actual user IDs from your database
 
-### ========================================
-### PHASE 1: SETUP (ADMIN)
-### ========================================
-
-### 1. Login as Admin
-POST {{url}}/auth/login
+### Get Admin Token
+POST http://localhost:3000/api/v1/auth/login
 Content-Type: application/json
 
 {
-  "email": "{{adminEmail}}",
-  "password": "{{adminPassword}}"
+  "email": "admin@example.com",
+  "password": "admin123"
 }
 
-### 2. Create Team
-POST {{url}}/teams
-Authorization: Bearer {{adminToken}}
-Content-Type: application/json
-
-{
-  "name": "Development Team",
-  "description": "Software development team"
-}
-
-### 3. Create Manager User
-POST {{url}}/auth/invite-user
-Authorization: Bearer {{adminToken}}
-Content-Type: application/json
-
-{
-  "email": "{{managerEmail}}",
-  "firstName": "John",
-  "lastName": "Manager",
-  "role": "MANAGER",
-  "teamId": "{{teamId}}"
-}
-
-### 4. Create Member User
-POST {{url}}/auth/invite-user
-Authorization: Bearer {{adminToken}}
-Content-Type: application/json
-
-{
-  "email": "member@example.com",
-  "firstName": "Alice",
-  "lastName": "Member",
-  "role": "MEMBER",
-  "teamId": "{{teamId}}"
-}
-
-### ========================================
-### PHASE 2: AUTHENTICATION
-### ========================================
-
-### 5. Login as Manager
-POST {{url}}/auth/login
+### Get Manager Token
+POST http://localhost:3000/api/v1/auth/login
 Content-Type: application/json
 
 {
   "email": "manager@example.com",
-  "password": "password123"
+  "password": "manager123"
 }
 
-### 6. Login as Member
-POST {{url}}/auth/login
+### Get Member Token
+POST http://localhost:3000/api/v1/auth/login
 Content-Type: application/json
 
 {
   "email": "member@example.com",
-  "password": "password123"
+  "password": "member123"
 }
 
-### ========================================
-### PHASE 3: TASK CREATION
-### ========================================
+### PHASE 2: TASK CREATION TESTS
 
-### 7. Create Team Task (Manager)
-POST {{url}}/tasks
-Authorization: Bearer {{managerToken}}
+### 1. Manager Creates Project Task (Success)
+POST http://localhost:3000/api/v1/tasks
+Authorization: Bearer YOUR_MANAGER_TOKEN
 Content-Type: application/json
 
 {
   "title": "Design Homepage",
-  "description": "Create a modern homepage design for the company website",
+  "description": "Create modern homepage design with responsive layout",
   "priority": "HIGH",
   "dueDate": "2024-02-15T00:00:00.000Z",
-  "assignedTo": "{{memberId}}",
+  "assignedTo": "MEMBER_USER_ID",
   "isPersonal": false
 }
 
-### 8. Create Another Team Task (Manager)
-POST {{url}}/tasks
-Authorization: Bearer {{managerToken}}
-Content-Type: application/json
-
-{
-  "title": "Fix Login Bug",
-  "description": "Investigate and fix the authentication issue",
-  "priority": "MEDIUM",
-  "dueDate": "2024-02-20T00:00:00.000Z",
-  "assignedTo": "{{memberId}}",
-  "isPersonal": false
-}
-
-### 9. Create Personal Task (Member)
-POST {{url}}/tasks
-Authorization: Bearer {{memberToken}}
+### 2. Member Creates Personal Task (Success)
+POST http://localhost:3000/api/v1/tasks
+Authorization: Bearer YOUR_MEMBER_TOKEN
 Content-Type: application/json
 
 {
@@ -137,188 +61,259 @@ Content-Type: application/json
   "isPersonal": true
 }
 
-### ========================================
-### PHASE 4: TASK VIEWS
-### ========================================
+### 3. Member Tries to Create Project Task (Should Fail)
+POST http://localhost:3000/api/v1/tasks
+Authorization: Bearer YOUR_MEMBER_TOKEN
+Content-Type: application/json
 
-### 10. Get My Tasks (Member) - Team tasks assigned to member
-    GET {{url}}/tasks?view=my-tasks
-Authorization: Bearer {{memberToken}}
+{
+  "title": "Unauthorized Project Task",
+  "description": "This should fail",
+  "priority": "HIGH",
+  "assignedTo": "ANOTHER_MEMBER_ID",
+  "isPersonal": false
+}
 
-### 11. Get My Personal Tasks (Member) - Personal tasks
-GET {{url}}/tasks?view=my-personal-tasks
-Authorization: Bearer {{memberToken}}
+### 4. Manager Creates Project Task Without Assignment (Should Fail)
+POST http://localhost:3000/api/v1/tasks
+Authorization: Bearer YOUR_MANAGER_TOKEN
+Content-Type: application/json
 
-### 12. Get Created by Me (Manager) - Team tasks created by manager
-GET {{url}}/tasks?view=created-by-me
-Authorization: Bearer {{managerToken}}
+{
+  "title": "Task Without Assignment",
+  "description": "This should fail",
+  "priority": "MEDIUM",
+  "isPersonal": false
+}
 
-### 13. Get Team Tasks (Manager) - All team tasks overview
-GET {{url}}/tasks?view=team-tasks
-Authorization: Bearer {{managerToken}}
+### PHASE 3: TASK VIEWING TESTS
 
-### ========================================
-### PHASE 5: TASK STATUS UPDATES
-### ========================================
+### 5. Get My Tasks (Member View)
+GET http://localhost:3000/api/v1/tasks?view=my-tasks
+Authorization: Bearer YOUR_MEMBER_TOKEN
 
-### 14. Update Task Status to IN_PROGRESS (Member)
-PATCH {{url}}/tasks/{{taskId}}
-Authorization: Bearer {{memberToken}}
+### 6. Get My Personal Tasks (Member View)
+GET http://localhost:3000/api/v1/tasks?view=my-personal-tasks
+Authorization: Bearer YOUR_MEMBER_TOKEN
+
+### 7. Get Created Tasks (Manager View)
+GET http://localhost:3000/api/v1/tasks?view=created-by-me
+Authorization: Bearer YOUR_MANAGER_TOKEN
+
+### 8. Get Project Tasks (Manager View)
+GET http://localhost:3000/api/v1/tasks?view=team-tasks
+Authorization: Bearer YOUR_MANAGER_TOKEN
+
+### 9. Get Tasks with Pagination
+GET http://localhost:3000/api/v1/tasks?view=my-tasks&page=1&limit=5
+Authorization: Bearer YOUR_MEMBER_TOKEN
+
+### 10. Get Tasks with Sorting
+GET http://localhost:3000/api/v1/tasks?view=my-tasks&sortBy=priority&sortOrder=desc
+Authorization: Bearer YOUR_MEMBER_TOKEN
+
+### PHASE 4: TASK FILTERING TESTS
+
+### 11. Filter by Status
+GET http://localhost:3000/api/v1/tasks?view=my-tasks&status=IN_PROGRESS
+Authorization: Bearer YOUR_MEMBER_TOKEN
+
+### 12. Filter by Priority
+GET http://localhost:3000/api/v1/tasks?view=my-tasks&priority=HIGH
+Authorization: Bearer YOUR_MEMBER_TOKEN
+
+### 13. Filter by Personal Tasks
+GET http://localhost:3000/api/v1/tasks?view=my-tasks&isPersonal=true
+Authorization: Bearer YOUR_MEMBER_TOKEN
+
+### 14. Search Tasks by Title/Description
+GET http://localhost:3000/api/v1/tasks?view=my-tasks&search=design
+Authorization: Bearer YOUR_MEMBER_TOKEN
+
+### 15. Combined Filters
+GET http://localhost:3000/api/v1/tasks?view=my-tasks&status=TODO&priority=HIGH&search=homepage
+Authorization: Bearer YOUR_MEMBER_TOKEN
+
+### PHASE 5: TASK UPDATE TESTS
+
+### 16. Member Updates Task Status (Success)
+PATCH http://localhost:3000/api/v1/tasks/TASK_ID
+Authorization: Bearer YOUR_MEMBER_TOKEN
 Content-Type: application/json
 
 {
   "status": "IN_PROGRESS"
 }
 
-### 15. Update Task Status to REVIEW (Member)
-PATCH {{url}}/tasks/{{taskId}}
-Authorization: Bearer {{memberToken}}
+### 17. Member Tries to Update Task Title (Should Fail)
+PATCH http://localhost:3000/api/v1/tasks/TASK_ID
+Authorization: Bearer YOUR_MEMBER_TOKEN
+Content-Type: application/json
+
+{
+  "title": "Updated Title",
+  "status": "IN_PROGRESS"
+}
+
+### 18. Manager Updates Task Assignment (Success)
+PATCH http://localhost:3000/api/v1/tasks/TASK_ID
+Authorization: Bearer YOUR_MANAGER_TOKEN
+Content-Type: application/json
+
+{
+  "assignedTo": "NEW_MEMBER_ID",
+  "priority": "HIGH",
+  "dueDate": "2024-03-01T00:00:00.000Z"
+}
+
+### 19. Manager Updates Task Status to DONE (Success)
+PATCH http://localhost:3000/api/v1/tasks/TASK_ID
+Authorization: Bearer YOUR_MANAGER_TOKEN
+Content-Type: application/json
+
+{
+  "status": "DONE"
+}
+
+### 20. Invalid Status Transition (Should Fail)
+PATCH http://localhost:3000/api/v1/tasks/TASK_ID
+Authorization: Bearer YOUR_MEMBER_TOKEN
+Content-Type: application/json
+
+{
+  "status": "DONE"
+}
+
+### PHASE 6: TASK DELETION TESTS
+
+### 21. Manager Deletes Own Task (Success)
+DELETE http://localhost:3000/api/v1/tasks/TASK_ID
+Authorization: Bearer YOUR_MANAGER_TOKEN
+
+### 22. Member Tries to Delete Project Task (Should Fail)
+DELETE http://localhost:3000/api/v1/tasks/TASK_ID
+Authorization: Bearer YOUR_MEMBER_TOKEN
+
+### 23. Member Deletes Personal Task (Success)
+DELETE http://localhost:3000/api/v1/tasks/PERSONAL_TASK_ID
+Authorization: Bearer YOUR_MEMBER_TOKEN
+
+### PHASE 7: TASK ACCESS PERMISSION TESTS
+
+### 24. Get Specific Task (Member - Assigned Task)
+GET http://localhost:3000/api/v1/tasks/TASK_ID
+Authorization: Bearer YOUR_MEMBER_TOKEN
+
+### 25. Get Specific Task (Member - Unassigned Task - Should Fail)
+GET http://localhost:3000/api/v1/tasks/UNASSIGNED_TASK_ID
+Authorization: Bearer YOUR_MEMBER_TOKEN
+
+### 26. Get Specific Task (Manager - Own Created Task)
+GET http://localhost:3000/api/v1/tasks/TASK_ID
+Authorization: Bearer YOUR_MANAGER_TOKEN
+
+### PHASE 8: COMPREHENSIVE TASK WORKFLOW TEST
+
+### 27. Complete Task Workflow
+# Step 1: Create Task
+POST http://localhost:3000/api/v1/tasks
+Authorization: Bearer YOUR_MANAGER_TOKEN
+Content-Type: application/json
+
+{
+  "title": "Complete Workflow Test",
+  "description": "Testing complete task workflow",
+  "priority": "HIGH",
+  "dueDate": "2024-02-20T00:00:00.000Z",
+  "assignedTo": "MEMBER_USER_ID",
+  "isPersonal": false
+}
+
+# Step 2: Member Starts Task
+PATCH http://localhost:3000/api/v1/tasks/TASK_ID
+Authorization: Bearer YOUR_MEMBER_TOKEN
+Content-Type: application/json
+
+{
+  "status": "IN_PROGRESS"
+}
+
+# Step 3: Member Submits for Review
+PATCH http://localhost:3000/api/v1/tasks/TASK_ID
+Authorization: Bearer YOUR_MEMBER_TOKEN
 Content-Type: application/json
 
 {
   "status": "REVIEW"
 }
 
-### 16. Update Task Status to DONE (Manager)
-PATCH {{url}}/tasks/{{taskId}}
-Authorization: Bearer {{managerToken}}
+# Step 4: Manager Approves Task
+PATCH http://localhost:3000/api/v1/tasks/TASK_ID
+Authorization: Bearer YOUR_MANAGER_TOKEN
 Content-Type: application/json
 
 {
   "status": "DONE"
 }
 
-### ========================================
-### PHASE 6: TASK MANAGEMENT
-### ========================================
+### PHASE 9: ERROR HANDLING TESTS
 
-### 17. Update Task Assignment (Manager)
-PATCH {{url}}/tasks/{{taskId}}
-Authorization: Bearer {{managerToken}}
+### 28. Invalid Task ID
+GET http://localhost:3000/api/v1/tasks/invalid-task-id
+Authorization: Bearer YOUR_MEMBER_TOKEN
+
+### 29. Invalid Status Transition
+PATCH http://localhost:3000/api/v1/tasks/TASK_ID
+Authorization: Bearer YOUR_MEMBER_TOKEN
 Content-Type: application/json
 
 {
-  "assignedTo": "{{memberId}}"
+  "status": "INVALID_STATUS"
 }
 
-### 18. Update Task Details (Manager)
-PATCH {{url}}/tasks/{{taskId}}
-Authorization: Bearer {{managerToken}}
+### 30. Invalid Priority
+POST http://localhost:3000/api/v1/tasks
+Authorization: Bearer YOUR_MANAGER_TOKEN
 Content-Type: application/json
 
 {
-  "title": "Updated Task Title",
-  "description": "Updated task description",
-  "priority": "LOW",
-  "dueDate": "2024-03-01T00:00:00.000Z"
-}
-
-### 19. Get Tasks with Status Filter (Member)
-GET {{url}}/tasks?view=my-tasks&status=IN_PROGRESS
-Authorization: Bearer {{memberToken}}
-
-### 20. Get Tasks with Priority Filter (Member)
-GET {{url}}/tasks?view=my-tasks&priority=HIGH
-Authorization: Bearer {{memberToken}}
-
-### 21. Get Specific Task (Member)
-  GET {{url}}/tasks/{{taskId}}
-Authorization: Bearer {{memberToken}}
-
-### ========================================
-### PHASE 7: TASK DELETION
-### ========================================
-
-### 22. Delete Personal Task (Member)
-DELETE {{url}}/tasks/{{personalTaskId}}
-Authorization: Bearer {{memberToken}}
-
-### 23. Delete Team Task (Manager)
-DELETE {{url}}/tasks/{{taskId}}
-Authorization: Bearer {{managerToken}}
-
-### ========================================
-### PHASE 8: ERROR TESTING
-### ========================================
-
-### 24. Test Manager Creating Personal Task (Should Fail)
-POST {{url}}/tasks
-Authorization: Bearer {{managerToken}}
-Content-Type: application/json
-
-{
-  "title": "Manager Personal Task",
-  "description": "This should fail - managers cannot create personal tasks",
-  "isPersonal": true
-}
-
-### 25. Test Member Creating Team Task (Should Fail)
-POST {{url}}/tasks
-Authorization: Bearer {{memberToken}}
-Content-Type: application/json
-
-{
-  "title": "Member Team Task",
-  "description": "This should fail - members cannot create team tasks",
-  "assignedTo": "{{memberId}}",
+  "title": "Invalid Priority Test",
+  "priority": "INVALID_PRIORITY",
+  "assignedTo": "MEMBER_USER_ID",
   "isPersonal": false
 }
 
-### 26. Test Member Modifying Team Task Details (Should Fail)
-PATCH {{url}}/tasks/{{taskId}}
-Authorization: Bearer {{memberToken}}
-Content-Type: application/json
+### PHASE 10: PAGINATION AND SORTING TESTS
 
-{
-  "title": "Member trying to modify task",
-  "description": "This should fail - members cannot modify team task details"
-}
+### 31. Pagination Test
+GET http://localhost:3000/api/v1/tasks?view=my-tasks&page=1&limit=3
+Authorization: Bearer YOUR_MEMBER_TOKEN
 
-### 27. Test Invalid Status Transition (Should Fail)
-PATCH {{url}}/tasks/{{taskId}}
-Authorization: Bearer {{memberToken}}
-Content-Type: application/json
+### 32. Sorting by Due Date
+GET http://localhost:3000/api/v1/tasks?view=my-tasks&sortBy=dueDate&sortOrder=asc
+Authorization: Bearer YOUR_MEMBER_TOKEN
 
-{
-  "status": "DONE"
-}
+### 33. Sorting by Priority
+GET http://localhost:3000/api/v1/tasks?view=my-tasks&sortBy=priority&sortOrder=desc
+Authorization: Bearer YOUR_MEMBER_TOKEN
 
-### 28. Test Unauthorized Access (Should Fail)
-GET {{url}}/tasks/{{taskId}}
-Authorization: Bearer {{memberToken}}
+### 34. Sorting by Title
+GET http://localhost:3000/api/v1/tasks?view=my-tasks&sortBy=title&sortOrder=asc
+Authorization: Bearer YOUR_MEMBER_TOKEN
 
-### 29. Test Manager Accessing Another Team's Task (Should Fail)
-GET {{url}}/tasks/{{otherTeamTaskId}}
-Authorization: Bearer {{managerToken}}
+### NOTES:
+# Replace placeholders:
+# - YOUR_MANAGER_TOKEN: JWT token from manager login
+# - YOUR_MEMBER_TOKEN: JWT token from member login
+# - TASK_ID: Actual task ID from task creation response
+# - MEMBER_USER_ID: Actual member user ID
+# - NEW_MEMBER_ID: New member user ID for reassignment
+# - PERSONAL_TASK_ID: Personal task ID
+# - UNASSIGNED_TASK_ID: Task not assigned to the member
 
-### 30. Test Member Accessing Another Member's Personal Task (Should Fail)
-GET {{url}}/tasks/{{otherPersonalTaskId}}
-Authorization: Bearer {{memberToken}}
-
-### ========================================
-### TESTING NOTES
-### ========================================
-
-### Expected Results:
-### ✅ Success Cases:
-### - Manager can create team tasks and assign to members
-### - Member can create personal tasks
-### - Member can update status of assigned team tasks
-### - Manager can see all team tasks and manage them
-### - Proper filtering works for status and priority
-
-### ❌ Failure Cases:
-### - Manager cannot create personal tasks
-### - Member cannot create team tasks
-### - Member cannot modify team task details
-### - Invalid status transitions are rejected
-### - Unauthorized access is blocked
-
-### Variables to Set:
-### - adminToken: From admin login response
-### - teamId: From team creation response
-### - managerToken: From manager login response
-### - memberToken: From member login response
-### - memberId: From member user creation response
-### - taskId: From task creation response
-### - personalTaskId: From personal task creation response 
+# Expected Responses:
+# - Success: 200/201 with task data
+# - Permission Error: 403 Forbidden
+# - Validation Error: 400 Bad Request
+# - Not Found: 404 Not Found
+# - Pagination: 200 with { tasks: [], pagination: {} } 

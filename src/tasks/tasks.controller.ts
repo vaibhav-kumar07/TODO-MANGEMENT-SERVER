@@ -10,7 +10,8 @@ import {
   UseGuards,
   Request,
   HttpStatus,
-  HttpCode
+  HttpCode,
+  Logger
 } from '@nestjs/common';
 import { TasksService } from './tasks.service';
 import { CreateTaskDto } from './dto/create-task.dto';
@@ -24,21 +25,26 @@ import { UserRole } from '../users/schemas/user.schema';
 @Controller('tasks')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class TasksController {
+  private readonly logger = new Logger(TasksController.name);
+
   constructor(private readonly tasksService: TasksService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() createTaskDto: CreateTaskDto, @Request() req) {
+    this.logger.log(`Creating task - User ID: ${req.user.id}, Role: ${req.user.role}`);
     return this.tasksService.createTask(createTaskDto, req.user.id);
   }
 
   @Get()
   async findAll(@Query() queryDto: QueryTasksDto, @Request() req) {
+    this.logger.log(`Getting tasks - User ID: ${req.user.id}, Role: ${req.user.role}`);
     return this.tasksService.findAll(queryDto, req.user.id);
   }
 
   @Get(':id')
   async findOne(@Param('id') id: string, @Request() req) {
+    this.logger.log(`Getting task - Task ID: ${id}, User ID: ${req.user.id}`);
     return this.tasksService.findOne(id, req.user.id);
   }
 
@@ -48,12 +54,14 @@ export class TasksController {
     @Body() updateTaskDto: UpdateTaskDto, 
     @Request() req
   ) {
+    this.logger.log(`Updating task - Task ID: ${id}, User ID: ${req.user.id}, Role: ${req.user.role}`);
     return this.tasksService.update(id, updateTaskDto, req.user.id);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@Param('id') id: string, @Request() req) {
+    this.logger.log(`Deleting task - Task ID: ${id}, User ID: ${req.user.id}, Role: ${req.user.role}`);
     return this.tasksService.remove(id, req.user.id);
   }
 } 

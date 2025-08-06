@@ -4,11 +4,14 @@ import { Model, Types } from 'mongoose';
 import { Task, TaskDocument, TaskStatus } from './schemas/task.schema';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
-import { QueryTasksDto, TaskView } from './dto/query-tasks.dto';
+import { QueryTasksDto,  } from './dto/query-tasks.dto';
 import { User, UserRole } from '../users/schemas/user.schema';
+import { Logger } from '@nestjs/common';
 
 @Injectable()
 export class TasksService {
+  private readonly logger = new Logger(TasksService.name);
+
   constructor(
     @InjectModel(Task.name) private taskModel: Model<TaskDocument>,
     @InjectModel(User.name) private userModel: Model<User>,
@@ -33,25 +36,23 @@ export class TasksService {
       }
       taskData.assignedTo = new Types.ObjectId(userId);
       taskData.isPersonal = true;
-      taskData.teamId = user.teamId;
     } else {
-      // Handle team tasks
+      // Handle project tasks
       if (user.role !== UserRole.MANAGER) {
-        throw new ForbiddenException('Only managers can create team tasks');
+        throw new ForbiddenException('Only managers can create project tasks');
       }
 
       if (!createTaskDto.assignedTo) {
-        throw new BadRequestException('Team tasks must be assigned to a member');
+        throw new BadRequestException(' tasks must be assigned to a member');
       }
 
-      // Verify assigned user is a member in the same team
+      // Verify assigned user is a member
       const assignedUser = await this.userModel.findById(createTaskDto.assignedTo);
-      if (!assignedUser || assignedUser.role !== UserRole.MEMBER || assignedUser.teamId?.toString() !== user.teamId?.toString()) {
-        throw new BadRequestException('Can only assign tasks to members in your team');
+      if (!assignedUser || assignedUser.role !== UserRole.MEMBER) {
+        throw new BadRequestException('Can only assign tasks to members');
       }
 
       taskData.assignedTo = new Types.ObjectId(createTaskDto.assignedTo);
-      taskData.teamId = user.teamId;
       taskData.isPersonal = false;
     }
 
@@ -60,57 +61,30 @@ export class TasksService {
     }
 
     const task = new this.taskModel(taskData);
-    return task.save();
+    const savedTask = await task.save();
+    
+    // Populate the saved task with user details
+    const populatedTask = await this.taskModel
+      .findById(savedTask._id)
+      .populate('assignedTo', 'firstName lastName email')
+      .populate('assignedBy', 'firstName lastName email')
+      .populate('createdBy', 'firstName lastName email')
+      .exec();
+    
+    if (!populatedTask) {
+      throw new NotFoundException('Failed to create task');
+    }
+    
+    return populatedTask;
   }
 
-  async findAll(queryDto: QueryTasksDto, userId: string): Promise<Task[]> {
+  async findAll(queryDto: QueryTasksDto, userId: string): Promise<{ tasks: Task[]; pagination: any }> {
     const user = await this.userModel.findById(userId);
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
     const filter: any = {};
-
-    // Apply view filters
-    switch (queryDto.view) {
-      case TaskView.MY_TASKS:
-        filter.assignedTo = new Types.ObjectId(userId);
-        filter.isPersonal = false;
-        break;
-      
-      case TaskView.MY_PERSONAL_TASKS:
-        filter.createdBy = new Types.ObjectId(userId);
-        filter.isPersonal = true;
-        break;
-      
-      case TaskView.CREATED_BY_ME:
-        if (user.role !== UserRole.MANAGER) {
-          throw new ForbiddenException('Only managers can view created tasks');
-        }
-        filter.createdBy = new Types.ObjectId(userId);
-        filter.isPersonal = false;
-        filter.teamId = user.teamId; // Only show tasks from their team
-        break;
-      
-      case TaskView.TEAM_TASKS:
-        if (user.role !== UserRole.MANAGER) {
-          throw new ForbiddenException('Only managers can view team tasks');
-        }
-        filter.teamId = user.teamId;
-        filter.isPersonal = false;
-        break;
-      
-      default:
-        // Default view based on user role
-        if (user.role === UserRole.MANAGER) {
-          filter.$or = [
-            { createdBy: new Types.ObjectId(userId) },
-            { assignedTo: new Types.ObjectId(userId) },
-          ];
-        } else {
-          filter.assignedTo = new Types.ObjectId(userId);
-        }
-    }
 
     // Apply additional filters
     if (queryDto.status) {
@@ -126,13 +100,61 @@ export class TasksService {
       filter.isPersonal = queryDto.isPersonal;
     }
 
-    return this.taskModel
+    // Apply due date filters
+    if (queryDto.dueDateFrom || queryDto.dueDateTo || queryDto.overdue) {
+      filter.dueDate = {};
+      
+      if (queryDto.dueDateFrom) {
+        filter.dueDate.$gte = new Date(queryDto.dueDateFrom);
+      }
+      
+      if (queryDto.dueDateTo) {
+        filter.dueDate.$lte = new Date(queryDto.dueDateTo);
+      }
+      
+      if (queryDto.overdue) {
+        // Overdue tasks: due date is in the past and status is not COMPLETED or CANCELLED
+        filter.$and = [
+          { dueDate: { $lt: new Date() } },
+          { status: { $nin: [TaskStatus.COMPLETED, TaskStatus.CANCELLED] } }
+        ];
+      }
+    }
+
+    // Apply search filter
+    if (queryDto.search) {
+      filter.$or = [
+        { title: { $regex: queryDto.search, $options: 'i' } },
+        { description: { $regex: queryDto.search, $options: 'i' } },
+      ];
+    }
+
+    // Pagination
+    const page = queryDto.page || 1;
+    const limit = queryDto.limit || 10;
+    const skip = (page - 1) * limit;
+
+    // Get total count for pagination
+    const total = await this.taskModel.countDocuments(filter);
+
+    // Get tasks with pagination and sorting
+    const tasks = await this.taskModel
       .find(filter)
       .populate('assignedTo', 'firstName lastName email')
       .populate('assignedBy', 'firstName lastName email')
       .populate('createdBy', 'firstName lastName email')
-      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
       .exec();
+
+    return {
+      tasks,
+      pagination: {
+        page,
+        limit,
+        total,
+      },
+    };
   }
 
   async findOne(id: string, userId: string): Promise<Task> {
@@ -154,20 +176,16 @@ export class TasksService {
 
     // Check permissions
     if (task.isPersonal) {
-      if (task.createdBy.toString() !== userId) {
+      if (task.createdBy.toString() !== userId.toString()) {
         throw new ForbiddenException('Cannot access personal task of another user');
       }
     } else {
-      // Team task permissions
+      // Project task permissions
       if (user.role === UserRole.MEMBER) {
-        if (task.assignedTo.toString() !== userId) {
-          throw new ForbiddenException('Cannot access team task not assigned to you');
+        if (task.assignedTo.toString() !== userId.toString()) {
+          throw new ForbiddenException('Cannot access project task not assigned to you');
         }
-      } else if (user.role === UserRole.MANAGER) {
-        if (task.teamId.toString() !== user.teamId.toString()) {
-          throw new ForbiddenException('Cannot access task from another team');
-        }
-      }
+      } 
     }
 
     return task;
@@ -186,33 +204,42 @@ export class TasksService {
 
     // Check permissions
     if (task.isPersonal) {
-      if (task.createdBy.toString() !== userId) {
+      if (task.createdBy.toString() !== userId.toString()) {
         throw new ForbiddenException('Cannot modify personal task of another user');
       }
     } else {
-      // Team task permissions
+      // Project task permissions
       if (user.role === UserRole.MEMBER) {
-        throw new ForbiddenException('Members cannot modify team tasks');
-      } else if (user.role === UserRole.MANAGER) {
-        if (task.createdBy.toString() !== userId) {
-          throw new ForbiddenException('Can only modify tasks you created');
+        // Members can only update status of tasks assigned to them
+        if (task.assignedTo.toString() !== userId.toString() && task.createdBy.toString() !== userId.toString()) {
+          throw new ForbiddenException('Cannot modify project task not assigned to you');
         }
-        if (task.teamId.toString() !== user.teamId.toString()) {
-          throw new ForbiddenException('Cannot modify task from another team');
+        // Members can only update status, not other fields
+        const allowedFields = ['status'];
+        const updateFields = Object.keys(updateTaskDto);
+        const hasInvalidFields = updateFields.some(field => !allowedFields.includes(field));
+        if (hasInvalidFields) {
+          throw new ForbiddenException('Members can only update task status');
+        }
+      } else if (user.role === UserRole.MANAGER) {
+        if (task.createdBy.toString() !== userId.toString()) {
+          throw new ForbiddenException('Can only modify tasks you created');
         }
       }
     }
 
     // Handle status transitions
     if (updateTaskDto.status && updateTaskDto.status !== task.status) {
+      this.logger.log(`🔄 Status transition attempt: ${task.status} → ${updateTaskDto.status} for task ${id}`);
       this.validateStatusTransition(task.status, updateTaskDto.status);
+      this.logger.log(`✅ Status transition validated: ${task.status} → ${updateTaskDto.status}`);
     }
 
-    // Handle assignment changes
-    if (updateTaskDto.assignedTo && !task.isPersonal) {
+    // Handle assignment changes (only managers can reassign)
+    if (updateTaskDto.assignedTo && !task.isPersonal && user.role === UserRole.MANAGER) {
       const assignedUser = await this.userModel.findById(updateTaskDto.assignedTo);
-      if (!assignedUser || assignedUser.role !== UserRole.MEMBER || assignedUser.teamId?.toString() !== user.teamId?.toString()) {
-        throw new BadRequestException('Can only assign tasks to members in your team');
+      if (!assignedUser || assignedUser.role !== UserRole.MEMBER) {
+        throw new BadRequestException('Can only assign tasks to members');
       }
     }
 
@@ -248,19 +275,16 @@ export class TasksService {
 
     // Check permissions
     if (task.isPersonal) {
-      if (task.createdBy.toString() !== userId) {
+      if (task.createdBy.toString() !== userId.toString()) {
         throw new ForbiddenException('Cannot delete personal task of another user');
       }
     } else {
-      // Team task permissions
+      // Project task permissions
       if (user.role === UserRole.MEMBER) {
-        throw new ForbiddenException('Members cannot delete team tasks');
+        throw new ForbiddenException('Members cannot delete project tasks');
       } else if (user.role === UserRole.MANAGER) {
-        if (task.createdBy.toString() !== userId) {
+        if (task.createdBy.toString() !== userId.toString()) {
           throw new ForbiddenException('Can only delete tasks you created');
-        }
-        if (task.teamId.toString() !== user.teamId.toString()) {
-          throw new ForbiddenException('Cannot delete task from another team');
         }
       }
     }
@@ -269,16 +293,20 @@ export class TasksService {
   }
 
   private validateStatusTransition(currentStatus: TaskStatus, newStatus: TaskStatus): void {
+    this.logger.log(`🔄 Validating status transition: ${currentStatus} → ${newStatus}`);
     const validTransitions: Record<TaskStatus, TaskStatus[]> = {
       [TaskStatus.TODO]: [TaskStatus.IN_PROGRESS, TaskStatus.CANCELLED],
-      [TaskStatus.IN_PROGRESS]: [TaskStatus.REVIEW, TaskStatus.CANCELLED],
-      [TaskStatus.REVIEW]: [TaskStatus.DONE, TaskStatus.IN_PROGRESS, TaskStatus.CANCELLED],
-      [TaskStatus.DONE]: [],
-      [TaskStatus.CANCELLED]: [],
+      [TaskStatus.IN_PROGRESS]: [TaskStatus.REVIEW, TaskStatus.CANCELLED, TaskStatus.COMPLETED],
+      [TaskStatus.REVIEW]: [TaskStatus.COMPLETED, TaskStatus.IN_PROGRESS, TaskStatus.CANCELLED],
+      [TaskStatus.COMPLETED]: [TaskStatus.IN_PROGRESS, TaskStatus.REVIEW], // Allow reopening completed tasks
+      [TaskStatus.CANCELLED]: [TaskStatus.TODO, TaskStatus.IN_PROGRESS], // Allow reactivating cancelled tasks
     };
 
     if (!validTransitions[currentStatus].includes(newStatus)) {
-      throw new BadRequestException(`Invalid status transition from ${currentStatus} to ${newStatus}`);
+      throw new BadRequestException(
+        `Invalid status transition from ${currentStatus} to ${newStatus}. ` +
+        `Valid transitions from ${currentStatus}: ${validTransitions[currentStatus].join(', ')}`
+      );
     }
   }
 } 

@@ -7,7 +7,7 @@ export enum TaskStatus {
   TODO = 'TODO',
   IN_PROGRESS = 'IN_PROGRESS',
   REVIEW = 'REVIEW',
-  DONE = 'DONE',
+  COMPLETED = 'COMPLETED', // For backward compatibility with existing data
   CANCELLED = 'CANCELLED',
 }
 
@@ -39,9 +39,6 @@ export class Task {
 
   @Prop({ type: Types.ObjectId, ref: 'User' })
   assignedBy: Types.ObjectId;
-
-  @Prop({ type: Types.ObjectId, ref: 'Team' })
-  teamId: Types.ObjectId;
 
   @Prop({ required: true, default: false })
   isPersonal: boolean;

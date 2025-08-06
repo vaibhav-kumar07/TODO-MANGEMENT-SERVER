@@ -1,13 +1,14 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { AppConfigService } from './config/app.config.service';
 import helmet from 'helmet';
 import * as compression from 'compression';
 import { AppModule } from './app.module';
+import { ServerConfigKey } from './config/environment.enum';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  const configService = app.get(ConfigService);
+  const configService = app.get(AppConfigService);
   const logger = new Logger('Bootstrap');
 
   // Security middleware
@@ -34,13 +35,14 @@ async function bootstrap() {
   // Global prefix
   app.setGlobalPrefix('api/v1');
 
-  const port = configService.get('port') || 3000;
-  const mongoUri = configService.get('database.uri');
+  const config = configService.loadConfig();
+  const port = config.server.port;
+  const mongoUri = config.database.uri;
   
   await app.listen(port);
   
   logger.log(`🚀 Server running on http://localhost:${port}`);
-  logger.log(`📊 Environment: ${configService.get('NODE_ENV') || 'development'}`);
+  logger.log(`📊 Environment: ${config.server.nodeEnv}`);
   logger.log(`🗄️  MongoDB: ${mongoUri ? 'connected' : 'not configured'}`);
 }
 bootstrap();

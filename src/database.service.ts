@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { AppConfigService } from './config/app.config.service';
 import { InjectConnection } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
 
@@ -8,12 +8,13 @@ export class DatabaseService implements OnModuleInit {
   private readonly logger = new Logger(DatabaseService.name);
 
   constructor(
-    private configService: ConfigService,
+    private configService: AppConfigService,
     @InjectConnection() private connection: Connection,
   ) {}
 
   async onModuleInit() {
-    const uri = this.configService.get('database.uri');
+    const config = this.configService.loadConfig();
+    const uri = config.database.uri;
     
     if (uri) {
       this.logger.log('✅ MongoDB URI: connected successfully');

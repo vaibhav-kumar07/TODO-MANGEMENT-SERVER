@@ -1,11 +1,24 @@
-import { Controller, Post, Get, Put, Body, UseGuards, Request, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Get, Put, Body, UseGuards, Request, HttpCode, HttpStatus, Logger, Query, Param } from '@nestjs/common';
+import { Request as ExpressRequest } from 'express';
 import { AuthService } from './auth.service';
+import { EmailService } from '../shared/email/email.service';
+
+interface RequestWithUser extends ExpressRequest {
+  user: {
+    id: string;
+    email: string;
+    role: string;
+  };
+}
+
 import { LoginDto } from './dto/login.dto';
 import { InviteUserDto } from './dto/invite-user.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { AdminResetPasswordDto } from './dto/admin-reset-password.dto';
+import { QueryUsersDto } from './dto/query-users.dto';
+import { AdminUpdateUserDto } from './dto/admin-update-user.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -13,7 +26,12 @@ import { UserRole } from '../users/schemas/user.schema';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  private readonly logger = new Logger(AuthController.name);
+
+  constructor(
+    private authService: AuthService,
+    private emailService: EmailService,
+  ) {}
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
@@ -30,20 +48,53 @@ export class AuthController {
   @Post('invite')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
-  async inviteUser(@Body() inviteUserDto: InviteUserDto, @Request() req) {
+  async inviteUser(@Body() inviteUserDto: InviteUserDto, @Request() req: RequestWithUser) {
     return this.authService.inviteUser(inviteUserDto, req.user);
   }
 
   @Get('profile')
   @UseGuards(JwtAuthGuard)
-  async getProfile(@Request() req) {
+  async getProfile(@Request() req: RequestWithUser) {
+    this.logger.log(`🔍 Profile request - User ID: ${req.user.id}, Email: ${req.user.email}, Role: ${req.user.role}`);
     return this.authService.getProfile(req.user.id);
+  }
+
+  @Get('users')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  async getAllUsers(@Query() queryDto: QueryUsersDto, @Request() req: RequestWithUser) {
+    this.logger.log(`👥 Users list request - User ID: ${req.user.id}, Email: ${req.user.email}, Role: ${req.user.role}`);
+    this.logger.log(`👥 Query filters: ${JSON.stringify(queryDto)}`);
+    return this.authService.getAllUsers(queryDto, req.user);
   }
 
   @Put('profile')
   @UseGuards(JwtAuthGuard)
-  async updateProfile(@Body() updateProfileDto: UpdateProfileDto, @Request() req) {
-    return this.authService.updateProfile(req.user.id, updateProfileDto);
+  async updateProfile(@Body() updateProfileDto: UpdateProfileDto, @Request() req: RequestWithUser) {
+    this.logger.log(`🔄 Profile update request - User ID: ${req.user.id}, Email: ${req.user.email}, Role: ${req.user.role}`);
+    this.logger.log(`🔄 Request body: ${JSON.stringify(updateProfileDto)}`);
+    
+    try {
+      const result = await this.authService.updateProfile(req.user.id, updateProfileDto);
+      this.logger.log(`✅ Profile update successful for user: ${req.user.id}`);
+      return result;
+    } catch (error) {
+      this.logger.error(`❌ Profile update failed for user: ${req.user.id}`, error.stack);
+      throw error;
+    }
+  }
+
+  @Put('update-users/:userId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async adminUpdateUser(
+    @Param('userId') userId: string,
+    @Body() adminUpdateUserDto: AdminUpdateUserDto,
+    @Request() req: RequestWithUser
+  ) {
+    this.logger.log(`🔄 Admin updating user - Admin ID: ${req.user.id}, Target User ID: ${userId}`);
+    this.logger.log(`🔄 Update data: ${JSON.stringify(adminUpdateUserDto)}`);
+    return this.authService.adminUpdateUser(userId, adminUpdateUserDto, req.user);
   }
 
   @Post('forgot-password')
@@ -61,16 +112,37 @@ export class AuthController {
   @Post('admin/reset-password')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
-  async adminResetPassword(@Body() adminResetPasswordDto: AdminResetPasswordDto, @Request() req) {
+  async adminResetPassword(@Body() adminResetPasswordDto: AdminResetPasswordDto, @Request() req: RequestWithUser) {
     return this.authService.adminResetPassword(adminResetPasswordDto, req.user);
   }
 
   @Post('logout')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
-  async logout(@Request() req) {
-    // Extract token from request headers
-    const token = req.headers.authorization?.replace('Bearer ', '');
+  async logout(@Request() req: RequestWithUser) {
+    const token = req.headers.authorization?.replace('Bearer ', '') || '';
     return this.authService.logout(token);
+  }
+
+  @Post('test-email')
+  @HttpCode(HttpStatus.OK)
+  async testEmail(@Body() body: { email: string }) {
+    return this.emailService.testEmail(body.email);
+  }
+
+  @Get('email-status')
+  @HttpCode(HttpStatus.OK)
+  async getEmailStatus() {
+    const emailUser = this.emailService['configService'].get('EMAIL_USER');
+    const emailPass = this.emailService['configService'].get('EMAIL_PASS');
+    
+    return {
+      emailConfigured: !!(emailUser && emailPass),
+      emailUser: emailUser ? 'Set' : 'Not set',
+      emailPass: emailPass ? 'Set' : 'Not set',
+      message: emailUser && emailPass 
+        ? 'Email service is configured' 
+        : 'Email service is not configured. Set EMAIL_USER and EMAIL_PASS in .env file'
+    };
   }
 } 

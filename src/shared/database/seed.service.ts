@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
 import { User, UserDocument, UserRole } from '../../users/schemas/user.schema';
 import { Team, TeamDocument } from '../../teams/schemas/team.schema';
+import { EmailService } from '../email/email.service';
 
 @Injectable()
 export class SeedService {
@@ -12,6 +13,7 @@ export class SeedService {
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Team.name) private teamModel: Model<TeamDocument>,
+    private emailService: EmailService,
   ) {}
 
   async seedAdmin() {
@@ -28,9 +30,10 @@ export class SeedService {
 
       this.logger.log('👤 Creating admin user first...');
       // Create admin user first
-      const hashedPassword = await bcrypt.hash('Admin123!', 12);
+      const adminPassword = 'Admin123!';
+      const hashedPassword = await bcrypt.hash(adminPassword, 12);
       const adminUser = new this.userModel({
-        email: 'admin@taskmanagement.com', // Fixed email here
+        email: 'viranshk7@gmail.com',
         firstName: 'System',
         lastName: 'Administrator',
         password: hashedPassword,
@@ -60,10 +63,23 @@ export class SeedService {
         teamId: savedTeam._id,
       });
 
+      // Send admin password email
+      try {
+        await this.emailService.sendAdminPasswordGenerated(
+          adminUser.email,
+          adminUser.firstName,
+          adminUser.lastName,
+          adminPassword,
+        );
+        this.logger.log('📧 Admin password email sent successfully');
+      } catch (emailError) {
+        this.logger.error('❌ Failed to send admin password email:', emailError);
+      }
+
       this.logger.log('🎉 Admin user seeded successfully!');
       this.logger.log('📧 Admin credentials:');
-      this.logger.log('   Email: admin@taskmanagement.com');
-      this.logger.log('   Password: Admin123!');
+      this.logger.log(`   Email: ${adminUser.email}`);
+      this.logger.log(`   Password: ${adminPassword}`);
     } catch (error) {
       this.logger.error('❌ Failed to seed admin user:', error);
       this.logger.error('Error stack:', error.stack);

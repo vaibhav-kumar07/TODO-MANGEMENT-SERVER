@@ -1,8 +1,9 @@
-import { IsString, IsOptional, IsEnum, IsDateString, IsMongoId, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsDateString, IsMongoId, IsBoolean, IsNotEmpty } from 'class-validator';
 import { TaskPriority, TaskStatus } from '../schemas/task.schema';
 
 export class CreateTaskDto {
   @IsString()
+  @IsNotEmpty()
   title: string;
 
   @IsOptional()
@@ -20,10 +21,6 @@ export class CreateTaskDto {
   @IsOptional()
   @IsMongoId()
   assignedTo?: string;
-
-  @IsOptional()
-  @IsMongoId()
-  teamId?: string;
 
   @IsOptional()
   @IsBoolean()
