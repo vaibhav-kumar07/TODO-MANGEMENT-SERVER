@@ -19,6 +19,7 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { AdminResetPasswordDto } from './dto/admin-reset-password.dto';
 import { QueryUsersDto } from './dto/query-users.dto';
 import { AdminUpdateUserDto } from './dto/admin-update-user.dto';
+import { ManagerUpdateUserDto } from './dto/manager-update-user.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -84,17 +85,26 @@ export class AuthController {
     }
   }
 
-  @Put('update-users/:userId')
+  // Unified endpoint for both admin and manager user updates
+  @Put('users/:userId')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
-  async adminUpdateUser(
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  async updateUser(
     @Param('userId') userId: string,
-    @Body() adminUpdateUserDto: AdminUpdateUserDto,
+    @Body() updateUserDto: AdminUpdateUserDto | ManagerUpdateUserDto,
     @Request() req: RequestWithUser
   ) {
-    this.logger.log(`🔄 Admin updating user - Admin ID: ${req.user.id}, Target User ID: ${userId}`);
-    this.logger.log(`🔄 Update data: ${JSON.stringify(adminUpdateUserDto)}`);
-    return this.authService.adminUpdateUser(userId, adminUpdateUserDto, req.user);
+    this.logger.log(`🔄 User updating user - Current User ID: ${req.user.id}, Target User ID: ${userId}`);
+    this.logger.log(`🔄 Current user role: ${req.user.role}`);
+    this.logger.log(`🔄 Update data: ${JSON.stringify(updateUserDto)}`);
+
+    if (req.user.role === UserRole.ADMIN) {
+      return this.authService.adminUpdateUser(userId, updateUserDto as AdminUpdateUserDto, req.user);
+    } else if (req.user.role === UserRole.MANAGER) {
+      return this.authService.managerUpdateUser(userId, updateUserDto as ManagerUpdateUserDto, req.user);
+    } else {
+      throw new Error('Only administrators and managers can update user profiles');
+    }
   }
 
   @Post('forgot-password')

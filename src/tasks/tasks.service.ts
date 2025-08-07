@@ -84,41 +84,51 @@ export class TasksService {
       throw new NotFoundException('User not found');
     }
 
+    this.logger.log(`🔍 Finding tasks for user: ${userId} (${user.role})`);
+
     const filter: any = {};
+  
+    if (user.role == UserRole.MEMBER) {
+      filter.assignedTo = new Types.ObjectId(userId);
+    }
 
     // Apply additional filters
     if (queryDto.status) {
       filter.status = queryDto.status;
+      this.logger.log(`📊 Status filter: ${queryDto.status}`);
     }
     if (queryDto.priority) {
       filter.priority = queryDto.priority;
+      this.logger.log(`📊 Priority filter: ${queryDto.priority}`);
     }
-    if (queryDto.assignedTo) {
+    // Only allow assignedTo filter for non-members (managers/admins)
+    if (queryDto.assignedTo && user.role !== UserRole.MEMBER) {
       filter.assignedTo = new Types.ObjectId(queryDto.assignedTo);
-    }
-    if (queryDto.isPersonal !== undefined) {
-      filter.isPersonal = queryDto.isPersonal;
+      this.logger.log(`📊 AssignedTo filter: ${queryDto.assignedTo}`);
     }
 
     // Apply due date filters
-    if (queryDto.dueDateFrom || queryDto.dueDateTo || queryDto.overdue) {
+    if (queryDto.dueDateFrom || queryDto.dueDateTo) {
       filter.dueDate = {};
       
       if (queryDto.dueDateFrom) {
         filter.dueDate.$gte = new Date(queryDto.dueDateFrom);
+        this.logger.log(`📅 Due date from: ${queryDto.dueDateFrom}`);
       }
       
       if (queryDto.dueDateTo) {
         filter.dueDate.$lte = new Date(queryDto.dueDateTo);
+        this.logger.log(`📅 Due date to: ${queryDto.dueDateTo}`);
       }
-      
-      if (queryDto.overdue) {
-        // Overdue tasks: due date is in the past and status is not COMPLETED or CANCELLED
-        filter.$and = [
-          { dueDate: { $lt: new Date() } },
-          { status: { $nin: [TaskStatus.COMPLETED, TaskStatus.CANCELLED] } }
-        ];
-      }
+    }
+
+    // Apply overdue filter
+    if (queryDto.overdue) {
+      filter.$and = [
+        { dueDate: { $lt: new Date() } },
+        { status: { $nin: [TaskStatus.COMPLETED, TaskStatus.CANCELLED] } }
+      ];
+      this.logger.log(`📊 Overdue filter applied`);
     }
 
     // Apply search filter
@@ -127,7 +137,10 @@ export class TasksService {
         { title: { $regex: queryDto.search, $options: 'i' } },
         { description: { $regex: queryDto.search, $options: 'i' } },
       ];
+      this.logger.log(`🔍 Search filter: ${queryDto.search}`);
     }
+
+    this.logger.log(`🎯 Final filter: ${JSON.stringify(filter)}`);
 
     // Pagination
     const page = queryDto.page || 1;
@@ -136,6 +149,7 @@ export class TasksService {
 
     // Get total count for pagination
     const total = await this.taskModel.countDocuments(filter);
+    this.logger.log(`📊 Total tasks found: ${total}`);
 
     // Get tasks with pagination and sorting
     const tasks = await this.taskModel
@@ -147,6 +161,8 @@ export class TasksService {
       .limit(limit)
       .exec();
 
+    this.logger.log(`✅ Returning ${tasks.length} tasks for user ${userId}`);
+
     return {
       tasks,
       pagination: {
@@ -157,6 +173,7 @@ export class TasksService {
     };
   }
 
+ 
   async findOne(id: string, userId: string): Promise<Task> {
     const user = await this.userModel.findById(userId);
     if (!user) {
@@ -214,13 +231,6 @@ export class TasksService {
         if (task.assignedTo.toString() !== userId.toString() && task.createdBy.toString() !== userId.toString()) {
           throw new ForbiddenException('Cannot modify project task not assigned to you');
         }
-        // Members can only update status, not other fields
-        const allowedFields = ['status'];
-        const updateFields = Object.keys(updateTaskDto);
-        const hasInvalidFields = updateFields.some(field => !allowedFields.includes(field));
-        if (hasInvalidFields) {
-          throw new ForbiddenException('Members can only update task status');
-        }
       } else if (user.role === UserRole.MANAGER) {
         if (task.createdBy.toString() !== userId.toString()) {
           throw new ForbiddenException('Can only modify tasks you created');
@@ -230,9 +240,7 @@ export class TasksService {
 
     // Handle status transitions
     if (updateTaskDto.status && updateTaskDto.status !== task.status) {
-      this.logger.log(`🔄 Status transition attempt: ${task.status} → ${updateTaskDto.status} for task ${id}`);
       this.validateStatusTransition(task.status, updateTaskDto.status);
-      this.logger.log(`✅ Status transition validated: ${task.status} → ${updateTaskDto.status}`);
     }
 
     // Handle assignment changes (only managers can reassign)
@@ -290,6 +298,115 @@ export class TasksService {
     }
 
     await this.taskModel.findByIdAndDelete(id);
+  }
+
+  async getMyTaskStats(userId: string): Promise<any> {
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Get all tasks assigned to this member
+    const allTasks = await this.taskModel.find({ assignedTo: new Types.ObjectId(userId) });
+    
+    const stats = {
+      total: allTasks.length,
+      todo: allTasks.filter(task => task.status === TaskStatus.TODO).length,
+      inProgress: allTasks.filter(task => task.status === TaskStatus.IN_PROGRESS).length,
+      review: allTasks.filter(task => task.status === TaskStatus.REVIEW).length,
+      completed: allTasks.filter(task => task.status === TaskStatus.COMPLETED).length,
+      cancelled: allTasks.filter(task => task.status === TaskStatus.CANCELLED).length,
+      overdue: allTasks.filter(task => {
+        const isOverdue = task.dueDate && new Date(task.dueDate) < new Date();
+        const isActive = ![TaskStatus.COMPLETED, TaskStatus.CANCELLED].includes(task.status);
+        return isOverdue && isActive;
+      }).length,
+      dueSoon: allTasks.filter(task => {
+        const dueDate = new Date(task.dueDate);
+        const now = new Date();
+        const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+        const isActive = ![TaskStatus.COMPLETED, TaskStatus.CANCELLED].includes(task.status);
+        return task.dueDate && dueDate <= sevenDaysFromNow && dueDate > now && isActive;
+      }).length,
+      completionRate: allTasks.length > 0 
+        ? Math.round((allTasks.filter(task => task.status === TaskStatus.COMPLETED).length / allTasks.length) * 100)
+        : 0
+    };
+
+    return stats;
+  }
+
+  async deleteTaskAsManager(taskId: string, userId: string): Promise<any> {
+    try {
+      this.logger.log(`🗑️ Manager attempting to delete task: ${taskId} by user: ${userId}`);
+
+      // Validate task ID
+      if (!Types.ObjectId.isValid(taskId)) {
+        return {
+          success: false,
+          error: 'Invalid task ID',
+          message: 'The provided task ID is not valid'
+        };
+      }
+
+      // Get the current user
+      const user = await this.userModel.findById(userId);
+      if (!user) {
+        return {
+          success: false,
+          error: 'User not found',
+          message: 'The specified user does not exist'
+        };
+      }
+
+      // Check if user is manager or admin
+      if (user.role !== UserRole.MANAGER && user.role !== UserRole.ADMIN) {
+        return {
+          success: false,
+          error: 'Insufficient permissions',
+          message: 'Only managers and administrators can delete tasks'
+        };
+      }
+
+      // Find the task
+      const task = await this.taskModel.findById(taskId);
+      if (!task) {
+        return {
+          success: false,
+          error: 'Task not found',
+          message: 'The specified task does not exist'
+        };
+      }
+
+      this.logger.log(`🗑️ Task found: ${task.title} (created by: ${task.createdBy})`);
+
+      // Additional validation: Managers can only delete tasks they created
+      if (user.role === UserRole.MANAGER && task.createdBy.toString() !== userId) {
+        return {
+          success: false,
+          error: 'Access denied',
+          message: 'Managers can only delete tasks they created'
+        };
+      }
+
+      // Delete the task
+      await this.taskModel.findByIdAndDelete(taskId);
+
+      this.logger.log(`✅ Task deleted successfully: ${taskId}`);
+
+      return {
+        success: true,
+        message: 'Task deleted successfully'
+      };
+
+    } catch (error) {
+      this.logger.error(`❌ Error deleting task: ${error.message}`);
+      return {
+        success: false,
+        error: 'Internal server error',
+        message: error.message
+      };
+    }
   }
 
   private validateStatusTransition(currentStatus: TaskStatus, newStatus: TaskStatus): void {

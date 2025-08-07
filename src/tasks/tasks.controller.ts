@@ -29,6 +29,22 @@ export class TasksController {
 
   constructor(private readonly tasksService: TasksService) {}
 
+
+  @Get('my-stats')
+  @Roles(UserRole.MEMBER)
+  async getMyTaskStats(@Request() req) {
+    this.logger.log(`Getting task stats - User ID: ${req.user.id}`);
+    return this.tasksService.getMyTaskStats(req.user.id);
+  }
+
+  // Debug route to test if specific routes work
+  @Get('test')
+  async testRoute(@Request() req) {
+    this.logger.log(`🎯 TEST ROUTE HIT - User ID: ${req.user.id}`);
+    this.logger.log(`🎯 Full URL: ${req.url}`);
+    return { message: 'Test route works!' };
+  }
+
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() createTaskDto: CreateTaskDto, @Request() req) {
@@ -56,6 +72,15 @@ export class TasksController {
   ) {
     this.logger.log(`Updating task - Task ID: ${id}, User ID: ${req.user.id}, Role: ${req.user.role}`);
     return this.tasksService.update(id, updateTaskDto, req.user.id);
+  }
+
+  // New route for manager-only task deletion
+  @Delete('manager/:id')
+  @Roles(UserRole.MANAGER, UserRole.ADMIN)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteTaskAsManager(@Param('id') id: string, @Request() req) {
+    this.logger.log(`🎯 MANAGER DELETE TASK ROUTE HIT - Task ID: ${id}, User ID: ${req.user.id}, Role: ${req.user.role}`);
+    return this.tasksService.deleteTaskAsManager(id, req.user.id);
   }
 
   @Delete(':id')
