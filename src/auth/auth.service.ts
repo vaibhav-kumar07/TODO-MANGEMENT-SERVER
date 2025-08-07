@@ -7,12 +7,10 @@ import { User, UserDocument, UserRole } from '../users/schemas/user.schema';
 import { Team, TeamDocument } from '../teams/schemas/team.schema';
 import { LoginDto } from './dto/login.dto';
 import { InviteUserDto } from './dto/invite-user.dto';
-import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { AdminResetPasswordDto } from './dto/admin-reset-password.dto';
-import { QueryUsersDto } from './dto/query-users.dto';
 import { AdminUpdateUserDto } from './dto/admin-update-user.dto';
 import { EmailService } from '../shared/email/email.service';
 import { SeedService } from '../shared/database/seed.service';
@@ -23,6 +21,8 @@ import {
   throwBusinessError 
 } from '../common/exceptions/business.exception';
 import { JwtConfigKey } from '../config/environment.enum';
+import { Types } from 'mongoose';
+import { ManagerUpdateUserDto } from './dto/manager-update-user.dto';
 
 @Injectable()
 export class AuthService {
@@ -300,6 +300,7 @@ export class AuthService {
   async getAllUsers(queryDto: any, currentUser: any) {
     this.logger.log(`🔍 Getting users with filters: ${JSON.stringify(queryDto)}`);
 
+    // Check permissions - only admin and manager can see users
     if (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.MANAGER) {
       throwAuthorizationError(
         'Insufficient permissions to view users',
@@ -334,9 +335,14 @@ export class AuthService {
       filter.role = role;
     }
 
-    // Manager restrictions - managers can only see their team members
-    if (currentUser.role === UserRole.MANAGER) {
-      filter.teamId = currentUser.teamId;
+    // Access control based on user role
+    if (currentUser.role === UserRole.ADMIN) {
+      // Admin can see all users (no additional filter)
+      this.logger.log(`👑 Admin accessing all users`);
+    } else if (currentUser.role === UserRole.MANAGER) {
+      // Manager can only see members (not other managers or admins)
+      filter.role = UserRole.MEMBER;
+      this.logger.log(`👥 Manager accessing only members`);
     }
 
     // Status filters
@@ -344,9 +350,9 @@ export class AuthService {
       filter.isActive = isActive;
     }
 
-
     // Pagination
     const skip = (page - 1) * limit;
+    
     // Execute query
     const [users, total] = await Promise.all([
       this.userModel
@@ -360,7 +366,7 @@ export class AuthService {
       this.userModel.countDocuments(filter)
     ]);
 
-    this.logger.log(`✅ Found ${users.length} users out of ${total} total`);
+    this.logger.log(`✅ Found ${users.length} users out of ${total} total for ${currentUser.role} user`);
 
     return {
       users: users.map(user => ({
@@ -406,6 +412,38 @@ export class AuthService {
       );
     }
 
+    this.logger.log(`🎯 Target user found: ${user!.email} (${user!.role})`);
+
+    // Admins cannot deactivate themselves
+    if ((user!._id as any).toString() === currentUser.id && updateUserDto.isActive === false) {
+      throwAuthorizationError(
+        'Self-deactivation not allowed',
+        'Administrators cannot deactivate their own accounts'
+      );
+    }
+
+    // Role change validation for admins
+    if (updateUserDto.role !== undefined) {
+      const currentRole = user!.role;
+      const newRole = updateUserDto.role;
+
+      // Check for invalid demotions
+      if (currentRole === UserRole.ADMIN && newRole === UserRole.MANAGER) {
+        throwAuthorizationError(
+          'Role demotion not allowed',
+          'Administrators cannot demote admin accounts to manager role'
+        );
+      }
+
+      if (currentRole === UserRole.MANAGER && newRole === UserRole.MEMBER) {
+        throwAuthorizationError(
+          'Role demotion not allowed',
+          'Administrators cannot demote manager accounts to member role'
+        );
+      }
+
+    }
+
     const updateData: any = {};
 
     // Update fields if provided
@@ -440,14 +478,115 @@ export class AuthService {
     this.logger.log(`✅ User updated successfully: ${updatedUser?.email} (${updatedUser?.role})`);
 
     return {
+      success: true,
       message: 'User updated successfully',
-      user: {
+      data: {
         id: updatedUser?._id,
         email: updatedUser?.email,
         firstName: updatedUser?.firstName,
         lastName: updatedUser?.lastName,
         role: updatedUser?.role,
         isEmailVerified: updatedUser?.isEmailVerified,
+        isActive: updatedUser?.isActive,
+      },
+    };
+  }
+
+  async managerUpdateUser(userId: string, updateUserDto: ManagerUpdateUserDto, currentUser: any) {
+    this.logger.log(`🔄 Manager updating user - Manager ID: ${currentUser.id}, Target User ID: ${userId}`);
+    this.logger.log(`🔄 Update data: ${JSON.stringify(updateUserDto)}`);
+
+    // Validate user ID
+    if (!Types.ObjectId.isValid(userId)) {
+      throwValidationError(
+        'Invalid user ID',
+        'The provided user ID is not valid'
+      );
+    }
+
+    // Get the target user
+    const targetUser = await this.userModel.findById(userId);
+    if (!targetUser) {
+      throwBusinessError(
+        'User not found',
+        'The specified user does not exist'
+      );
+    }
+
+    // Type assertion since we've already checked for null
+    const user = targetUser as UserDocument;
+
+    this.logger.log(`🎯 Target user found: ${user.email} (${user.role})`);
+
+    // Managers cannot modify admins
+    if (user.role === UserRole.ADMIN) {
+      throwAuthorizationError(
+        'Access denied',
+        'Managers cannot modify administrator accounts'
+      );
+    }
+
+    // Managers cannot modify other managers
+    if (user.role === UserRole.MANAGER && (user._id as any).toString() !== currentUser.id) {
+      throwAuthorizationError(
+        'Access denied',
+        'Managers cannot modify other manager accounts'
+      );
+    }
+
+    // Managers cannot deactivate themselves
+    if ((user._id as any).toString() === currentUser.id && updateUserDto.isActive === false) {
+      throwAuthorizationError(
+        'Self-deactivation not allowed',
+        'Managers cannot deactivate their own accounts'
+      );
+    }
+
+    // Role change validation - Managers cannot change roles at all
+    if (updateUserDto.role !== undefined) {
+      throwAuthorizationError(
+        'Role modification not allowed',
+        'Managers cannot change user roles. Only administrators can modify user roles.'
+      );
+    }
+
+    // Build update data
+    const updateData: any = {};
+    
+    if (updateUserDto.firstName !== undefined) {
+      updateData.firstName = updateUserDto.firstName;
+    }
+    if (updateUserDto.lastName !== undefined) {
+      updateData.lastName = updateUserDto.lastName;
+    }
+    if (updateUserDto.role !== undefined) {
+      updateData.role = updateUserDto.role;
+    }
+    if (updateUserDto.isActive !== undefined) {
+      updateData.isActive = updateUserDto.isActive;
+    }
+
+    // Update the user
+    const updatedUser = await this.userModel.findByIdAndUpdate(userId, updateData, { new: true }).select('-password');
+
+    if (!updatedUser) {
+      throwBusinessError(
+        'User update failed',
+        'Unable to update the user profile. The user may no longer exist'
+      );
+    }
+
+    this.logger.log(`✅ User updated successfully by manager: ${updatedUser?.email} (${updatedUser?.role})`);
+
+    return {
+      success: true,
+      message: 'User updated successfully',
+      data: {
+        id: updatedUser?._id,
+        email: updatedUser?.email,
+        firstName: updatedUser?.firstName,
+        lastName: updatedUser?.lastName,
+        role: updatedUser?.role,
         isActive: updatedUser?.isActive,
       },
     };
@@ -494,7 +633,6 @@ export class AuthService {
       // Update password
       const hashedPassword = await bcrypt.hash(newPassword, 12);
       await this.userModel.findByIdAndUpdate(user?._id, { password: hashedPassword });
-
       return { message: 'Password reset successfully' };
     } catch (error) {
       throwValidationError(
