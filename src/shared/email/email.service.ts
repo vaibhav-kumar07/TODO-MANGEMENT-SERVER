@@ -5,28 +5,36 @@ import * as nodemailer from 'nodemailer';
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private transporter: nodemailer.Transporter | null;
+  private transporter: nodemailer.Transporter | null = null;
+  private isEmailEnabled: boolean = false;
 
   constructor(private configService: ConfigService) {
     this.initializeTransporter();
   }
+  
 
   private async initializeTransporter() {
     const emailUser = this.configService.get('EMAIL_USER');
     const emailPassword = this.configService.get('EMAIL_PASS');
+    const emailHost = this.configService.get('EMAIL_HOST', 'smtp.gmail.com');
+    const emailPort = this.configService.get('EMAIL_PORT', 587);
+    const emailSecure = this.configService.get('EMAIL_SECURE', false);
+    const nodeEnv = this.configService.get('NODE_ENV', 'development');
 
     // Check if email credentials are configured
     if (!emailUser || !emailPassword) {
-      this.logger.warn('Email credentials not configured. Email service will be disabled.');
+      this.logger.warn('⚠️ Email credentials not configured. Email service will be disabled.');
+      this.logger.warn('📧 To enable email service, configure EMAIL_USER and EMAIL_PASS in your .env file');
       this.transporter = null;
+      this.isEmailEnabled = false;
       return;
     }
 
     // For development, use Gmail or configure your SMTP
     this.transporter = nodemailer.createTransport({
-      host: this.configService.get('EMAIL_HOST', 'smtp.gmail.com'),
-      port: this.configService.get('EMAIL_PORT', 587),
-      secure: this.configService.get('EMAIL_SECURE', false),
+      host: emailHost,
+      port: emailPort,
+      secure: emailSecure,
       requireTLS: true,
       tls: {
         rejectUnauthorized: false,
@@ -40,10 +48,29 @@ export class EmailService {
     // Verify connection
     try {
       await this.transporter.verify();
-      this.logger.log('Email service initialized successfully');
+      this.isEmailEnabled = true;
+      this.logger.log('✅ Email service initialized successfully');
     } catch (error) {
-      this.logger.error('Email service initialization failed:', error);
+      this.logger.error('❌ Email service initialization failed:');
+      this.logger.error(`   Error: ${error.message}`);
+      
+      if (error.code === 'EAUTH') {
+        this.logger.error('🔐 Authentication failed. Please check your email credentials.');
+        this.logger.error('📧 For Gmail, make sure to:');
+        this.logger.error('   1. Enable 2-factor authentication');
+        this.logger.error('   2. Generate an App Password');
+        this.logger.error('   3. Use the App Password instead of your regular password');
+      } else if (error.code === 'ECONNECTION') {
+        this.logger.error('🌐 Connection failed. Please check your email host and port settings.');
+      }
+      
       this.transporter = null;
+      this.isEmailEnabled = false;
+      
+      // In development, don't crash the app if email fails
+      if (nodeEnv === 'development') {
+        this.logger.warn('🛠️ Running in development mode - continuing without email service');
+      }
     }
   }
 
@@ -277,6 +304,30 @@ export class EmailService {
     `;
   }
 
+  private async sendEmail(to: string, subject: string, htmlContent: string): Promise<boolean> {
+    if (!this.isEmailEnabled || !this.transporter) {
+      this.logger.warn(`📧 Email service disabled - skipping email to ${to}`);
+      this.logger.warn(`   Subject: ${subject}`);
+      return false;
+    }
+
+    try {
+      const mailOptions = {
+        from: this.configService.get('EMAIL_FROM', this.configService.get('EMAIL_USER')),
+        to: to,
+        subject: subject,
+        html: this.getEmailTemplate(htmlContent),
+      };
+
+      await this.transporter.sendMail(mailOptions);
+      this.logger.log(`✅ Email sent successfully to ${to}`);
+      return true;
+    } catch (error) {
+      this.logger.error(`❌ Failed to send email to ${to}: ${error.message}`);
+      return false;
+    }
+  }
+
   async sendUserInvitation(
     email: string,
     firstName: string,
@@ -329,25 +380,7 @@ export class EmailService {
       </p>
     `;
 
-    const mailOptions = {
-      from: `"Task Management System" <${this.configService.get('EMAIL_USER')}>`,
-      to: email,
-      subject: '🎉 Welcome to Task Management System - Your Account is Ready!',
-      html: this.getEmailTemplate(htmlContent),
-    };
-
-    if (!this.transporter) {
-      this.logger.warn(`Email service disabled. Would have sent invitation to ${email}`);
-      return;
-    }
-
-    try {
-      await this.transporter.sendMail(mailOptions);
-      this.logger.log(`Invitation email sent to ${email}`);
-    } catch (error) {
-      this.logger.error(`Failed to send invitation email to ${email}:`, error);
-      throw error;
-    }
+    await this.sendEmail(email, '🎉 Welcome to Task Management System - Your Account is Ready!', htmlContent);
   }
 
   async sendPasswordReset(email: string, resetToken: string) {
@@ -384,25 +417,7 @@ export class EmailService {
       </p>
     `;
 
-    const mailOptions = {
-      from: `"Task Management System" <${this.configService.get('EMAIL_USER')}>`,
-      to: email,
-      subject: '🔒 Password Reset Request - Task Management System',
-      html: this.getEmailTemplate(htmlContent),
-    };
-
-    if (!this.transporter) {
-      this.logger.warn(`Email service disabled. Would have sent password reset to ${email}`);
-      return;
-    }
-
-    try {
-      await this.transporter.sendMail(mailOptions);
-      this.logger.log(`Password reset email sent to ${email}`);
-    } catch (error) {
-      this.logger.error(`Failed to send password reset email to ${email}:`, error);
-      throw error;
-    }
+    await this.sendEmail(email, '🔒 Password Reset Request - Task Management System', htmlContent);
   }
 
   async sendAdminPasswordResetNotification(email: string) {
@@ -438,25 +453,7 @@ export class EmailService {
       </p>
     `;
 
-    const mailOptions = {
-      from: `"Task Management System" <${this.configService.get('EMAIL_USER')}>`,
-      to: email,
-      subject: '🔒 Password Reset by Administrator - Task Management System',
-      html: this.getEmailTemplate(htmlContent),
-    };
-
-    if (!this.transporter) {
-      this.logger.warn(`Email service disabled. Would have sent admin reset notification to ${email}`);
-      return;
-    }
-
-    try {
-      await this.transporter.sendMail(mailOptions);
-      this.logger.log(`Admin password reset notification sent to ${email}`);
-    } catch (error) {
-      this.logger.error(`Failed to send admin reset notification to ${email}:`, error);
-      throw error;
-    }
+    await this.sendEmail(email, '🔒 Password Reset by Administrator - Task Management System', htmlContent);
   }
 
   async sendAdminPasswordGenerated(
@@ -509,25 +506,7 @@ export class EmailService {
       </p>
     `;
 
-    const mailOptions = {
-      from: `"Task Management System" <${this.configService.get('EMAIL_USER')}>`,
-      to: email,
-      subject: '👑 System Administrator Account Created - Task Management System',
-      html: this.getEmailTemplate(htmlContent),
-    };
-
-    if (!this.transporter) {
-      this.logger.warn(`Email service disabled. Would have sent admin credentials to ${email}`);
-      return;
-    }
-
-    try {
-      await this.transporter.sendMail(mailOptions);
-      this.logger.log(`Admin credentials email sent to ${email}`);
-    } catch (error) {
-      this.logger.error(`Failed to send admin credentials email to ${email}:`, error);
-      throw error;
-    }
+    await this.sendEmail(email, '👑 System Administrator Account Created - Task Management System', htmlContent);
   }
 
   async testEmail(email: string) {
@@ -556,37 +535,6 @@ export class EmailService {
       </p>
     `;
 
-    const mailOptions = {
-      from: `"Task Management System" <${this.configService.get('EMAIL_USER')}>`,
-      to: email,
-      subject: '🧪 Email Service Test - Task Management System',
-      html: this.getEmailTemplate(htmlContent),
-    };
-
-    if (!this.transporter) {
-      this.logger.warn(`Email service disabled. Cannot send test email to ${email}`);
-      return {
-        success: false,
-        message: 'Email service is not configured',
-        error: 'EMAIL_SERVICE_DISABLED'
-      };
-    }
-
-    try {
-      await this.transporter.sendMail(mailOptions);
-      this.logger.log(`Test email sent to ${email}`);
-      return {
-        success: true,
-        message: 'Test email sent successfully',
-        email
-      };
-    } catch (error) {
-      this.logger.error(`Failed to send test email to ${email}:`, error);
-      return {
-        success: false,
-        message: 'Failed to send test email',
-        error: error.message
-      };
-    }
+    await this.sendEmail(email, '🧪 Email Service Test - Task Management System', htmlContent);
   }
 } 

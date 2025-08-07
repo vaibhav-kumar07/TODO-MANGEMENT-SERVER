@@ -1,0 +1,113 @@
+### Login to get JWT token
+POST http://localhost:3000/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@example.com",
+  "password": "password"
+}
+
+### Get Dashboard Stats (Comprehensive Statistics)
+GET http://localhost:3000/api/v1/dashboard/stats
+Authorization: Bearer {{auth_token}}
+
+### Expected Response:
+# {
+#   "success": true,
+#   "data": {
+#     "totalUsers": 156,
+#     "totalManagers": 12,
+#     "totalMembers": 144,
+#     "activeManagers": 10,
+#     "inactiveManagers": 2,
+#     "activeMembers": 132,
+#     "inactiveMembers": 12,
+#     "newUsersToday": 23,
+#     "newUsersThisWeek": 45,
+#     "newUsersThisMonth": 89,
+#     "newManagersToday": 2,
+#     "newMembersToday": 21,
+#     "totalLogins": 1247,
+#     "loginsToday": 89,
+#     "loginsThisWeek": 456,
+#     "loginsThisMonth": 2345,
+#     "failedLoginsToday": 5,
+#     "failedLoginsThisWeek": 23,
+#     "passwordResetsToday": 3,
+#     "forgotPasswordRequests": 2,
+#     "totalTasks": 0,
+#     "completedTasks": 0,
+#     "pendingTasks": 0,
+#     "overdueTasks": 0,
+#     "tasksCreatedToday": 0,
+#     "tasksCompletedToday": 0,
+#     "tasksUpdatedToday": 0,
+#     "totalTeams": 0,
+#     "activeTeams": 0,
+#     "inactiveTeams": 0,
+#     "teamsCreatedToday": 0,
+#     "membersAddedToday": 0,
+#     "membersRemovedToday": 0,
+#     "totalActivities": 1247,
+#     "activitiesToday": 89,
+#     "activitiesThisWeek": 456,
+#     "activitiesThisMonth": 2345,
+#     "uniqueActiveUsersToday": 45,
+#     "uniqueActiveUsersThisWeek": 142
+#   },
+#   "message": "Dashboard statistics retrieved successfully"
+# }
+
+### Get User Activity (Recent Events & Activity Summary)
+GET http://localhost:3000/api/v1/dashboard/user-activity
+Authorization: Bearer {{auth_token}}
+
+### Expected Response:
+# {
+#   "success": true,
+#   "data": {
+#     "recentLogins": [
+#       {
+#         "userId": "507f1f77bcf86cd799439011",
+#         "userEmail": "john.doe@example.com",
+#         "userName": "John Doe",
+#         "userRole": "manager",
+#         "timestamp": "2025-01-08T12:30:00.000Z",
+#         "ipAddress": "192.168.1.100",
+#         "userAgent": "Mozilla/5.0..."
+#       }
+#     ],
+#     "recentUserEvents": [
+#       {
+#         "userId": "507f1f77bcf86cd799439011",
+#         "userEmail": "john.doe@example.com",
+#         "userName": "John Doe",
+#         "userRole": "manager",
+#         "action": "LOGIN",
+#         "timestamp": "2025-01-08T12:30:00.000Z",
+#         "details": { "ipAddress": "192.168.1.100" }
+#       }
+#     ],
+#     "activitySummary": {
+#       "totalActivities": 1247,
+#       "activitiesToday": 89,
+#       "activitiesThisWeek": 456,
+#       "activitiesThisMonth": 2345
+#     }
+#   },
+#   "message": "User activity retrieved successfully"
+# }
+
+### Get Simple Login Count
+GET http://localhost:3000/api/v1/dashboard/login-count
+Authorization: Bearer {{auth_token}}
+
+### Expected Response:
+# {
+#   "success": true,
+#   "data": {
+#     "totalLogins": 1247,
+#     "lastUpdated": "2025-01-08T12:30:00.000Z"
+#   },
+#   "message": "Login count retrieved successfully"
+# }

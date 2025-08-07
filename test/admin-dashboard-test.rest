@@ -1,0 +1,82 @@
+@url = http://localhost:3001/api/v1
+@adminToken = YOUR_ADMIN_JWT_TOKEN_HERE
+
+### ========================================
+### ADMIN DASHBOARD DATA FORMAT TEST
+### ========================================
+
+### 1. Get Admin Dashboard Data
+GET {{url}}/dashboard/admin
+Authorization: Bearer {{adminToken}}
+
+### 2. Get Auto Dashboard (should return admin data for admin user)
+GET {{url}}/dashboard/auto
+Authorization: Bearer {{adminToken}}
+
+### ========================================
+### EXPECTED RESPONSE FORMAT:
+### ========================================
+# {
+#   "success": true,
+#   "data": {
+#     "statsCards": {
+#       "totalUsers": 156,
+#       "managers": 12,
+#       "activeUsers": 142,
+#       "todayLogins": 89,
+#       "trends": {
+#         "totalUsers": { "value": 5.2, "isPositive": true },
+#         "managers": { "value": 2.1, "isPositive": true },
+#         "activeUsers": { "value": 8.5, "isPositive": true },
+#         "todayLogins": { "value": -2.3, "isPositive": false }
+#       }
+#     },
+#     "userStats": {
+#       "totalUsers": 156,
+#       "managers": 12,
+#       "members": 144,
+#       "activeUsers": 142,
+#       "inactiveUsers": 14,
+#       "newUsersThisMonth": 23
+#     },
+#     "activityStats": {
+#       "totalLogins": 1247,
+#       "loginsToday": 89,
+#       "loginsThisWeek": 456,
+#       "passwordInvitations": 45,
+#       "pendingInvitations": 8,
+#       "expiredInvitations": 3,
+#       "successfulInvitations": 34,
+#       "failedInvitations": 2,
+#       "averageSessionTime": 45
+#     }
+#   },
+#   "message": "Admin dashboard data retrieved successfully"
+# }
+
+### ========================================
+### WEB SOCKET DASHBOARD UPDATE FORMAT:
+### ========================================
+# When dashboard data is updated, WebSocket will emit:
+# {
+#   "type": "dashboard_update",
+#   "data": {
+#     "statsCards": { ... },
+#     "userStats": { ... },
+#     "activityStats": { ... }
+#   },
+#   "timestamp": 1703123456789
+# }
+
+### ========================================
+### TO GET A VALID TOKEN, RUN THIS FIRST:
+### ========================================
+
+### Get Admin Token
+# POST {{url}}/auth/login
+# Content-Type: application/json
+# 
+# {
+#   "email": "admin@taskmanagement.com",
+#   "password": "Admin123!"
+# }

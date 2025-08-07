@@ -1,17 +1,15 @@
 import { Module, OnModuleInit } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
-import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigService } from '@nestjs/config';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
-import { User, UserSchema } from '../users/schemas/user.schema';
-import { Team, TeamSchema } from '../teams/schemas/team.schema';
 import { SharedModule } from '../shared/shared.module';
 import { SeedService } from '../shared/database/seed.service';
 import { JwtConfigKey } from '../config/environment.enum';
 import { ConfigModule } from '../config/config.module';
+import { WebsocketModule } from '../websocket/websocket.module';
 
 @Module({
   imports: [
@@ -26,11 +24,8 @@ import { ConfigModule } from '../config/config.module';
       }),
       inject: [ConfigService],
     }),
-    MongooseModule.forFeature([
-      { name: User.name, schema: UserSchema },
-      { name: Team.name, schema: TeamSchema },
-    ]),
     SharedModule,
+    WebsocketModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],

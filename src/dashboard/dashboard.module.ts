@@ -1,18 +1,16 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { User, UserSchema } from '../users/schemas/user.schema';
-import { Task, TaskSchema } from '../tasks/schemas/task.schema';
 import { DashboardController } from './dashboard.controller';
 import { DashboardService } from './dashboard.service';
-import { WebsocketModule } from '../websocket/websocket.module';
+import { UserActivity, UserActivitySchema } from '../shared/schemas/user-activity.schema';
+import { User, UserSchema } from '../users/schemas/user.schema';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
+      { name: UserActivity.name, schema: UserActivitySchema },
       { name: User.name, schema: UserSchema },
-      { name: Task.name, schema: TaskSchema },
     ]),
-    WebsocketModule,
   ],
   controllers: [DashboardController],
   providers: [DashboardService],

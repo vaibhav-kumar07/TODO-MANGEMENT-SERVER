@@ -14,6 +14,7 @@ import { AdminResetPasswordDto } from './dto/admin-reset-password.dto';
 import { AdminUpdateUserDto } from './dto/admin-update-user.dto';
 import { EmailService } from '../shared/email/email.service';
 import { SeedService } from '../shared/database/seed.service';
+import { ActivityLoggerService } from '../shared/services/activity-logger.service';
 import { 
   throwValidationError, 
   throwAuthenticationError, 
@@ -23,6 +24,7 @@ import {
 import { JwtConfigKey } from '../config/environment.enum';
 import { Types } from 'mongoose';
 import { ManagerUpdateUserDto } from './dto/manager-update-user.dto';
+import { DashboardGateway } from '../websocket/websocket.gateway';
 
 @Injectable()
 export class AuthService {
@@ -34,6 +36,8 @@ export class AuthService {
     private jwtService: JwtService,
     private emailService: EmailService,
     private seedService: SeedService,
+    private activityLogger: ActivityLoggerService,
+    private dashboardGateway: DashboardGateway,
   ) {}
 
   async login(loginDto: LoginDto) {
@@ -72,6 +76,21 @@ export class AuthService {
     const refreshToken = this.jwtService.sign(payload, {
       expiresIn: '7d',
       secret: process.env[JwtConfigKey.REFRESH_SECRET] || 'refresh-secret',
+    });
+
+    // Log user login activity
+    await this.activityLogger.logUserLogin(
+      user!._id as any,
+      user!.email,
+      user!.role.toString(),
+    );
+
+    // Emit login event via WebSocket
+    await this.dashboardGateway.emitLoginEvent(user!._id as any, {
+      id: user!._id,
+      email: user!.email,
+      role: user!.role,
+      name: `${user!.firstName} ${user!.lastName}`,
     });
 
     return {
@@ -145,6 +164,22 @@ export class AuthService {
     });
 
     await newUser.save();
+
+    // Emit user created event via WebSocket
+    await this.dashboardGateway.emitUserCreatedEvent(
+      newUser._id as any,
+      {
+        id: newUser._id,
+        email: newUser.email,
+        role: newUser.role,
+        name: `${newUser.firstName} ${newUser.lastName}`,
+      },
+      {
+        id: currentUser.id,
+        email: currentUser.email,
+        role: currentUser.role,
+      }
+    );
 
     // Send invitation email
     await this.emailService.sendUserInvitation(
@@ -472,6 +507,24 @@ export class AuthService {
       throwBusinessError(
         'User update failed',
         'Unable to update the user profile. The user may no longer exist'
+      );
+    }
+
+    // Emit user activated event if user was activated
+    if (updateUserDto.isActive === true && !user?.isActive) {
+      await this.dashboardGateway.emitUserActivatedEvent(
+        updatedUser?._id as any,
+        {
+          id: updatedUser?._id,
+          email: updatedUser?.email,
+          role: updatedUser?.role,
+          name: `${updatedUser?.firstName} ${updatedUser?.lastName}`,
+        },
+        {
+          id: currentUser.id,
+          email: currentUser.email,
+          role: currentUser.role,
+        }
       );
     }
 
