@@ -11,6 +11,8 @@ import { ConfigModule } from './config/config.module';
 import { AppConfigService } from './config/app.config.service';
 import { DatabaseService } from './database.service';
 import { DatabaseConfigKey } from './config/environment.enum';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { WebsocketModule } from './websocket/websocket.module';
 
 @Module({
   imports: [
@@ -28,6 +30,8 @@ import { DatabaseConfigKey } from './config/environment.enum';
     TasksModule,
     SharedModule,
     CommonModule,
+    DashboardModule,
+    WebsocketModule,
   ],
   controllers: [AppController],
   providers: [AppService, DatabaseService],
