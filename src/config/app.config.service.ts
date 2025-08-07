@@ -33,8 +33,6 @@ export class AppConfigService {
         throw new Error(`${config} environment variable is required.`);
       }
     }
-
-   
   }
 
   loadConfig() {
@@ -61,7 +59,6 @@ export class AppConfigService {
       uri: this.configService.get<string>(DatabaseConfigKey.URI),
     };
   }
-
 
   private loadEmailConfig() {
     return {
