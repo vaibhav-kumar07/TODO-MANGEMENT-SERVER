@@ -91,6 +91,9 @@ export class TasksService {
     if (user.role === UserRole.MEMBER) {
       filter.assignedTo = new Types.ObjectId(userId);
     }
+    if (user.role === UserRole.MANAGER) {
+      filter.createdBy = new Types.ObjectId(userId);
+    }
 
     // Apply additional filters
     if (queryDto.status) {

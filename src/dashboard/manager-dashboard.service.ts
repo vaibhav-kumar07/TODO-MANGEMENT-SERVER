@@ -26,11 +26,13 @@ export class ManagerDashboardService {
 
       // Get members who have tasks assigned by this manager
       const membersWithTasks = await this.taskModel.distinct('assignedTo', {
-        // assignedBy: managerId
+        // createdBy: managerId
       });
 
       // Task Statistics
-      const totalTasks = await this.taskModel.countDocuments();
+      const totalTasks = await this.taskModel.countDocuments({
+        createdBy: managerId
+      });
 
       const tasksCreatedToday = await this.taskModel.countDocuments({
         // assignedBy: managerId,
@@ -38,23 +40,23 @@ export class ManagerDashboardService {
       });
 
       const pendingTasks = await this.taskModel.countDocuments({
-        // assignedBy: managerId,
+        assignedBy: managerId,
         status: TaskStatus.TODO
       });
 
       const completedTasks = await this.taskModel.countDocuments({
-        // assignedBy: managerId,
+        createdBy: managerId,
         status: TaskStatus.COMPLETED
       });
 
       const overdueTasks = await this.taskModel.countDocuments({
-        // assignedBy: managerId,
+        createdBy: managerId,
         dueDate: { $lt: new Date() },
         status: { $ne: TaskStatus.COMPLETED }
       });
 
       const highPriorityTasks = await this.taskModel.countDocuments({
-        // assignedBy: managerId,
+        createdBy: managerId,
         priority: TaskPriority.HIGH,
         status: { $ne: TaskStatus.COMPLETED }
       });
