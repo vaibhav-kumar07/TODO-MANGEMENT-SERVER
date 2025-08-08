@@ -87,8 +87,7 @@ export class TasksService {
     this.logger.log(`🔍 Finding tasks for user: ${userId} (${user.role})`);
 
     const filter: any = {};
-  
-    if (user.role == UserRole.MEMBER) {
+    if (user.role === UserRole.MEMBER) {
       filter.assignedTo = new Types.ObjectId(userId);
     }
 
@@ -254,6 +253,9 @@ export class TasksService {
     const updateData: any = { ...updateTaskDto };
     if (updateTaskDto.dueDate) {
       updateData.dueDate = new Date(updateTaskDto.dueDate);
+    }
+    if (updateTaskDto.assignedTo) {
+      updateData.assignedTo = new Types.ObjectId(updateTaskDto.assignedTo);
     }
 
     const updatedTask = await this.taskModel
