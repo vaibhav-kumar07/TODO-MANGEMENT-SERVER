@@ -27,6 +27,7 @@ export class DashboardGateway implements OnGatewayConnection, OnGatewayDisconnec
 
   constructor(private jwtService: JwtService) {}
 
+  
   afterInit(server: Server) {
     try {
       const wsPort = process.env.WS_PORT || 3002;

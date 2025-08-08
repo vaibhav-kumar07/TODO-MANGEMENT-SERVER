@@ -546,6 +546,17 @@ export class AuthService {
       );
     }
 
+    // NEW RESTRICTION: Admins can only activate/deactivate managers and members
+    // They cannot deactivate other admins
+    if (updateUserDto.isActive === false) {
+      if (user!.role === UserRole.ADMIN) {
+        throwAuthorizationError(
+          'Admin deactivation not allowed',
+          'Administrators cannot deactivate other admin accounts. Only managers and members can be deactivated.'
+        );
+      }
+    }
+
     // Role change validation for admins
     if (updateUserDto.role !== undefined) {
       const currentRole = user!.role;
