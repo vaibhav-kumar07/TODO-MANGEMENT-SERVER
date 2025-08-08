@@ -1,0 +1,114 @@
+### Login as Manager to get JWT token
+POST http://localhost:3000/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "manager@example.com",
+  "password": "password"
+}
+
+### Get Manager Stats (Task and Team Member Statistics)
+GET http://localhost:3000/api/v1/manager-dashboard/stats
+Authorization: Bearer {{auth_token}}
+
+### Expected Response:
+# {
+#   "success": true,
+#   "data": {
+#     "totalTeamTasks": 45,
+#     "tasksCreatedToday": 5,
+#     "pendingTasks": 20,
+#     "completedTasks": 25,
+#     "overdueTasks": 3,
+#     "highPriorityTasks": 7,
+#     "totalTeamMembers": 12,
+#     "membersAddedToday": 1,
+#     "membersWithTasks": 10,
+#     "membersWithoutTasks": 2,
+#     "tasksCreatedCount": 5,
+#     "tasksCompletedCount": 8,
+#     "tasksAssignedCount": 15,
+#     "taskStatusChanges": 12
+#   },
+#   "message": "Manager statistics retrieved successfully"
+# }
+
+### Get Manager Activity (Task Events and Activity Summary)
+GET http://localhost:3000/api/v1/manager-dashboard/activity
+Authorization: Bearer {{auth_token}}
+
+### Expected Response:
+# {
+#   "success": true,
+#   "data": {
+#     "recentTaskEvents": [
+#       {
+#         "taskId": "507f1f77bcf86cd799439011",
+#         "taskTitle": "Implement login feature",
+#         "assignedTo": {
+#           "userId": "507f1f77bcf86cd799439012",
+#           "userName": "John Doe",
+#           "userEmail": "john.doe@example.com"
+#         },
+#         "status": "IN_PROGRESS",
+#         "priority": "HIGH",
+#         "action": "TASK_STATUS_CHANGED",
+#         "timestamp": "2025-01-08T12:30:00.000Z",
+#         "performedBy": {
+#           "userId": "507f1f77bcf86cd799439013",
+#           "userName": "Manager Name",
+#           "role": "manager"
+#         }
+#       }
+#     ],
+#     "todaysSummary": {
+#       "taskStatusChanges": 12,
+#       "taskPriorityChanges": 5,
+#       "taskAssignmentChanges": 8,
+#       "newTasks": 5
+#     }
+#   },
+#   "message": "Manager activity retrieved successfully"
+# }
+
+### WebSocket Events Example:
+# socket.on('TASK_STATUS_CHANGED', (data) => {
+#   console.log('Task status changed:', data);
+#   // data = {
+#   //   taskId: "507f1f77bcf86cd799439011",
+#   //   status: "IN_PROGRESS",
+#   //   oldStatus: "PENDING",
+#   //   timestamp: 1704722400000,
+#   //   eventType: "TASK_STATUS_CHANGED"
+#   // }
+#   updateManagerStats();
+#   addToActivityFeed(data);
+# });
+#
+# socket.on('TASK_PRIORITY_CHANGED', (data) => {
+#   console.log('Task priority changed:', data);
+#   // data = {
+#   //   taskId: "507f1f77bcf86cd799439011",
+#   //   priority: "HIGH",
+#   //   oldPriority: "MEDIUM",
+#   //   timestamp: 1704722400000,
+#   //   eventType: "TASK_PRIORITY_CHANGED"
+#   // }
+#   updateManagerStats();
+#   addToActivityFeed(data);
+# });
+#
+# socket.on('TASK_ASSIGNED', (data) => {
+#   console.log('Task assigned:', data);
+#   // data = {
+#   //   taskId: "507f1f77bcf86cd799439011",
+#   //   assignedTo: {
+#   //     userId: "507f1f77bcf86cd799439012",
+#   //     userName: "John Doe"
+#   //   },
+#   //   timestamp: 1704722400000,
+#   //   eventType: "TASK_ASSIGNED"
+#   // }
+#   updateManagerStats();
+#   addToActivityFeed(data);
+# });
