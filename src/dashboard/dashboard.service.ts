@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { UserActivity, UserActivityDocument } from '../shared/schemas/user-activity.schema';
-import { User, UserDocument } from '../users/schemas/user.schema';
+import { User, UserDocument, UserRole } from '../users/schemas/user.schema';
 
 // Comprehensive event types for admin tracking
 export enum EventType {
@@ -174,28 +174,18 @@ export class DashboardService {
 
       // User Statistics
       const totalUsers = await this.userModel.countDocuments();
-      const totalManagers = await this.userModel.countDocuments({ role: 'manager' });
-      const totalMembers = await this.userModel.countDocuments({ role: 'member' });
+      const totalManagers = await this.userModel.countDocuments({ role: UserRole.MANAGER });
+      const totalMembers = await this.userModel.countDocuments({ role: UserRole.MEMBER });
       
       // Active/Inactive Users by Role
-      const activeManagerIds = await this.userActivityModel.distinct('userId', {
-        activityType: EventType.LOGIN,
-        timestamp: { $gte: weekAgo }
-      }).then(ids => ids);
-      
       const activeManagers = await this.userModel.countDocuments({
-        _id: { $in: activeManagerIds },
-        role: 'manager'
+        isActive: true,
+        role: UserRole.MANAGER
       });
       
-      const activeMemberIds = await this.userActivityModel.distinct('userId', {
-        activityType: EventType.LOGIN,
-        timestamp: { $gte: weekAgo }
-      }).then(ids => ids);
-      
       const activeMembers = await this.userModel.countDocuments({
-        _id: { $in: activeMemberIds },
-        role: 'member'
+        isActive: true,
+        role: UserRole.MEMBER
       });
       
       const inactiveManagers = totalManagers - activeManagers;
@@ -213,11 +203,11 @@ export class DashboardService {
       });
       const newManagersToday = await this.userModel.countDocuments({
         createdAt: { $gte: today },
-        role: 'manager'
+        role: UserRole.MANAGER
       });
       const newMembersToday = await this.userModel.countDocuments({
         createdAt: { $gte: today },
-        role: 'member'
+        role: UserRole.MEMBER
       });
 
       // Authentication Statistics

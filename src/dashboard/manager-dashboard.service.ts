@@ -155,73 +155,77 @@ export class ManagerDashboardService {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      // Get recent task events from task history
+      // Get recent task events from task history - get all tasks without manager filtering
       const recentTasks = await this.taskModel
         .find({
-          assignedBy: managerId,
           updatedAt: { $exists: true }
         })
         .sort({ updatedAt: -1 })
         .limit(10)
         .populate('assignedTo', 'email firstName lastName')
         .populate('lastUpdatedBy', 'email firstName lastName role')
+        .populate('createdBy', 'email firstName lastName role')
         .lean();
 
       const recentTaskEvents: TaskEvent[] = recentTasks
-        .filter(task => task.lastUpdatedBy) // Only include tasks with lastUpdatedBy
-        .map(task => ({
-          taskId: task._id.toString(),
-          taskTitle: task.title,
-          assignedTo: task.assignedTo ? {
-            userId: (task.assignedTo as any)._id.toString(),
-            userName: `${(task.assignedTo as any).firstName} ${(task.assignedTo as any).lastName}`,
-            userEmail: (task.assignedTo as any).email
-          } : undefined,
-          status: task.status,
-          priority: task.priority,
-          dueDate: task.dueDate,
-          eventType: TaskEventType.TASK_UPDATED,
-          timestamp: task.updatedAt,
-          changes: {},
-          performedBy: {
-            userId: (task.lastUpdatedBy as any)._id.toString(),
-            userName: `${(task.lastUpdatedBy as any).firstName} ${(task.lastUpdatedBy as any).lastName}`,
-            role: (task.lastUpdatedBy as any).role
+        .filter(task => task.lastUpdatedBy || task.createdBy) // Only include tasks with a performer
+        .map(task => {
+          // Determine who performed the action
+          const performedBy = task.lastUpdatedBy || task.createdBy;
+          
+          // Determine event type based on what changed
+          let eventType = TaskEventType.TASK_UPDATED;
+          if (task.createdAt && task.updatedAt && 
+              Math.abs(task.createdAt.getTime() - task.updatedAt.getTime()) < 1000) {
+            eventType = TaskEventType.TASK_CREATED;
           }
-        }));
 
-      // Get today's activity summary by event type
+          return {
+            taskId: task._id.toString(),
+            taskTitle: task.title,
+            assignedTo: task.assignedTo ? {
+              userId: (task.assignedTo as any)._id.toString(),
+              userName: `${(task.assignedTo as any).firstName} ${(task.assignedTo as any).lastName}`,
+              userEmail: (task.assignedTo as any).email
+            } : undefined,
+            status: task.status,
+            priority: task.priority,
+            dueDate: task.dueDate,
+            eventType,
+            timestamp: task.updatedAt || task.createdAt,
+            changes: {},
+            performedBy: {
+              userId: (performedBy as any)._id.toString(),
+              userName: `${(performedBy as any).firstName} ${(performedBy as any).lastName}`,
+              role: (performedBy as any).role
+            }
+          };
+        });
+
+      // Get today's activity summary by event type - no manager filtering
       const todaysSummary = {
         [TaskEventType.TASK_CREATED]: await this.taskModel.countDocuments({
-          assignedBy: managerId,
           createdAt: { $gte: today }
         }),
         [TaskEventType.TASK_UPDATED]: await this.taskModel.countDocuments({
-          assignedBy: managerId,
           updatedAt: { $gte: today }
         }),
         [TaskEventType.TASK_DELETED]: await this.taskModel.countDocuments({
-          assignedBy: managerId,
           deletedAt: { $gte: today }
         }),
         [TaskEventType.TASK_ASSIGNED]: await this.taskModel.countDocuments({
-          assignedBy: managerId,
           lastAssignedAt: { $gte: today }
         }),
         [TaskEventType.TASK_COMPLETED]: await this.taskModel.countDocuments({
-          assignedBy: managerId,
           completedAt: { $gte: today }
         }),
         [TaskEventType.TASK_STATUS_CHANGED]: await this.taskModel.countDocuments({
-          assignedBy: managerId,
           'statusHistory.timestamp': { $gte: today }
         }),
         [TaskEventType.TASK_PRIORITY_CHANGED]: await this.taskModel.countDocuments({
-          assignedBy: managerId,
           'priorityHistory.timestamp': { $gte: today }
         }),
         [TaskEventType.TASK_DUE_DATE_CHANGED]: await this.taskModel.countDocuments({
-          assignedBy: managerId,
           'dueDateHistory.timestamp': { $gte: today }
         })
       };

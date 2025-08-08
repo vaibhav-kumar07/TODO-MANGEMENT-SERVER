@@ -12,14 +12,16 @@ interface RequestWithUser extends ExpressRequest {
 }
 
 import { LoginDto } from './dto/login.dto';
+import { SignupDto } from './dto/signup.dto';
 import { InviteUserDto } from './dto/invite-user.dto';
-import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ForgotPasswordGenerateDto } from './dto/forgot-password-generate.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { AdminResetPasswordDto } from './dto/admin-reset-password.dto';
 import { QueryUsersDto } from './dto/query-users.dto';
 import { AdminUpdateUserDto } from './dto/admin-update-user.dto';
 import { ManagerUpdateUserDto } from './dto/manager-update-user.dto';
+import { AdminUpdateUserPasswordDto } from './dto/admin-update-user-password.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -38,6 +40,13 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async login(@Body() loginDto: LoginDto) {
     return this.authService.login(loginDto);
+  }
+
+  @Post('signup')
+  @HttpCode(HttpStatus.CREATED)
+  async signup(@Body() signupDto: SignupDto) {
+    this.logger.log(`📝 Admin signup request - Email: ${signupDto.email}`);
+    return this.authService.signup(signupDto);
   }
 
   @Post('refresh')
@@ -107,10 +116,13 @@ export class AuthController {
     }
   }
 
-  @Post('forgot-password')
+
+
+  @Post('forgot-password-generate')
   @HttpCode(HttpStatus.OK)
-  async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
-    return this.authService.forgotPassword(forgotPasswordDto);
+  async forgotPasswordGenerate(@Body() forgotPasswordGenerateDto: ForgotPasswordGenerateDto) {
+    this.logger.log(`🔐 Forgot password generate request - Email: ${forgotPasswordGenerateDto.email}`);
+    return this.authService.forgotPasswordGenerate(forgotPasswordGenerateDto);
   }
 
   @Post('reset-password')
@@ -124,6 +136,18 @@ export class AuthController {
   @Roles(UserRole.ADMIN)
   async adminResetPassword(@Body() adminResetPasswordDto: AdminResetPasswordDto, @Request() req: RequestWithUser) {
     return this.authService.adminResetPassword(adminResetPasswordDto, req.user);
+  }
+
+  @Put('admin/users/:userId/password')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async adminUpdateUserPassword(
+    @Param('userId') userId: string,
+    @Body() adminUpdateUserPasswordDto: AdminUpdateUserPasswordDto,
+    @Request() req: RequestWithUser
+  ) {
+    this.logger.log(`🔐 Admin update user password request - Admin ID: ${req.user.id}, Target User ID: ${userId}`);
+    return this.authService.adminUpdateUserPassword(userId, adminUpdateUserPasswordDto, req.user);
   }
 
   @Post('logout')

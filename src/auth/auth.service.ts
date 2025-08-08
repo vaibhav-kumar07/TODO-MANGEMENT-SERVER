@@ -6,15 +6,18 @@ import * as bcrypt from 'bcryptjs';
 import { User, UserDocument, UserRole } from '../users/schemas/user.schema';
 import { Team, TeamDocument } from '../teams/schemas/team.schema';
 import { LoginDto } from './dto/login.dto';
+import { SignupDto } from './dto/signup.dto';
 import { InviteUserDto } from './dto/invite-user.dto';
-import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ForgotPasswordGenerateDto } from './dto/forgot-password-generate.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { AdminResetPasswordDto } from './dto/admin-reset-password.dto';
 import { AdminUpdateUserDto } from './dto/admin-update-user.dto';
+import { AdminUpdateUserPasswordDto } from './dto/admin-update-user-password.dto';
 import { EmailService } from '../shared/email/email.service';
 import { SeedService } from '../shared/database/seed.service';
 import { ActivityLoggerService } from '../shared/services/activity-logger.service';
+import { EventSeverity, EventType } from '../shared/schemas/event-log.schema';
 import { 
   throwValidationError, 
   throwAuthenticationError, 
@@ -42,7 +45,8 @@ export class AuthService {
 
   async login(loginDto: LoginDto) {
     const { email, password } = loginDto;
-
+    console.log('email', email);
+    console.log('password', password);
     const user = await this.userModel.findOne({ email }).select('+password');
     if (!user || !user.isActive) {
       throwAuthenticationError(
@@ -51,7 +55,9 @@ export class AuthService {
       );
     }
 
+
     const isPasswordValid = await bcrypt.compare(password, user!.password);
+    console.log('isPasswordValid', isPasswordValid);
     if (!isPasswordValid) {
       throwAuthenticationError(
         'Email or password is incorrect',
@@ -103,6 +109,89 @@ export class AuthService {
         lastName: user!.lastName,
         role: user!.role,
         teamId: user!.teamId,
+      },
+    };
+  }
+
+  async signup(signupDto: SignupDto) {
+    const { email, password, firstName, lastName } = signupDto;
+
+    // Check if user already exists
+    const existingUser = await this.userModel.findOne({ email });
+    if (existingUser) {
+      throwValidationError(
+        'Email already registered',
+        'An account with this email address already exists'
+      );
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 12);
+
+    // Create new admin user
+    const newUser = new this.userModel({
+      email: email.toLowerCase(),
+      password: hashedPassword,
+      firstName,
+      lastName,
+      role: UserRole.ADMIN,
+      isEmailVerified: true,
+      isActive: true,
+    });
+
+    await newUser.save();
+
+    // Generate JWT tokens
+    const payload = {
+      sub: newUser._id,
+      email: newUser.email,
+      role: UserRole.ADMIN,
+    };
+
+
+    const accessToken = this.jwtService.sign(payload);
+    const refreshToken = this.jwtService.sign(payload, {
+      expiresIn: '7d',
+      secret: process.env[JwtConfigKey.REFRESH_SECRET] || 'refresh-secret',
+    });
+
+    // Log admin signup activity
+    await this.activityLogger.logEvent(
+      EventType.USER_REGISTER,
+      `New admin user registered: ${email}`,
+      EventSeverity.LOW,
+      newUser._id as any,
+      newUser.email,
+      newUser.role.toString(),
+      { 
+        action: 'ADMIN_SIGNUP',
+        firstName,
+        lastName,
+        role: UserRole.ADMIN
+      }
+    );
+
+    // Send welcome email to admin
+    await this.emailService.sendAdminPasswordGenerated(
+      newUser.email,
+      newUser.firstName,
+      newUser.lastName,
+      password // Send the original password in email
+    );
+
+    this.logger.log(`👑 New admin user created: ${email}`);
+
+    return {
+      accessToken,
+      refreshToken,
+      user: {
+        id: newUser._id,
+        email: newUser.email,
+        firstName: newUser.firstName,
+        lastName: newUser.lastName,
+        role: newUser.role,
+        isEmailVerified: newUser.isEmailVerified,
+        isActive: newUser.isActive,
       },
     };
   }
@@ -645,25 +734,57 @@ export class AuthService {
     };
   }
 
-  async forgotPassword(forgotPasswordDto: ForgotPasswordDto) {
-    const { email } = forgotPasswordDto;
+
+  async forgotPasswordGenerate(forgotPasswordGenerateDto: ForgotPasswordGenerateDto) {
+    const { email } = forgotPasswordGenerateDto;
 
     const user = await this.userModel.findOne({ email });
     if (!user || !user.isActive) {
       // Don't reveal if user exists or not for security
-      return { message: 'If an account with this email exists, a password reset link has been sent.' };
+      return { 
+        success: true,
+        message: 'If an account with this email exists, a new password has been generated and sent.' 
+      };
     }
 
-    // Generate reset token (valid for 1 hour)
-    const resetToken = this.jwtService.sign(
-      { sub: user._id, email: user.email },
-      { expiresIn: '1h', secret: process.env[JwtConfigKey.RESET_SECRET] || 'reset-secret' }
+    // Generate new secure password
+    const newPassword = this.generateSecurePassword();
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+    // Update user's password
+    await this.userModel.findByIdAndUpdate(user._id, { 
+      password: hashedPassword,
+      updatedAt: new Date()
+    });
+
+    // Log password reset activity
+    await this.activityLogger.logEvent(
+      EventType.PASSWORD_RESET,
+      `Password reset via forgot password for user: ${email}`,
+      EventSeverity.MEDIUM,
+      user._id as any,
+      user.email,
+      user.role.toString(),
+      { 
+        action: 'FORGOT_PASSWORD_GENERATE',
+        resetMethod: 'email_generation'
+      }
     );
 
-    // Send password reset email
-    await this.emailService.sendPasswordReset(email, resetToken);
+    // Send new password email
+    await this.emailService.sendForgotPasswordGenerated(
+      user.email,
+      user.firstName,
+      user.lastName,
+      newPassword
+    );
 
-    return { message: 'If an account with this email exists, a password reset link has been sent.' };
+    this.logger.log(`🔐 Password reset completed for user: ${email}`);
+
+    return { 
+      success: true,
+      message: 'If an account with this email exists, a new password has been generated and sent.' 
+    };
   }
 
   async resetPassword(resetPasswordDto: ResetPasswordDto) {
@@ -722,6 +843,121 @@ export class AuthService {
     await this.emailService.sendAdminPasswordResetNotification(email);
 
     return { message: 'Password reset successfully by admin' };
+  }
+
+  async adminUpdateUserPassword(userId: string, adminUpdateUserPasswordDto: AdminUpdateUserPasswordDto, currentUser: any) {
+    const { newPassword } = adminUpdateUserPasswordDto;
+
+    // Check if current user is admin
+    if (currentUser.role !== UserRole.ADMIN) {
+      throwAuthorizationError(
+        'Administrator access required',
+        'Only system administrators can update user passwords'
+      );
+    }
+
+    // Validate user ID format
+    if (!Types.ObjectId.isValid(userId)) {
+      throwValidationError(
+        'Invalid user ID',
+        'The provided user ID is not valid'
+      );
+    }
+
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throwBusinessError(
+        'User not found',
+        'No user account exists with this ID'
+      );
+    }
+
+    if (!user?.isActive) {
+      throwBusinessError(
+        'User account is inactive',
+        'Cannot update password for an inactive user account'
+      );
+    }
+
+    // Generate new password if not provided
+    let generatedPassword: string;
+    if (newPassword) {
+      // Validate provided password
+      if (newPassword.length < 6) {
+        throwValidationError(
+          'Password too short',
+          'Password must be at least 6 characters long'
+        );
+      }
+      generatedPassword = newPassword;
+    } else {
+      // Generate a secure random password
+      generatedPassword = this.generateSecurePassword();
+    }
+
+    // Update password
+    const hashedPassword = await bcrypt.hash(generatedPassword, 12);
+    await this.userModel.findByIdAndUpdate(userId, { password: hashedPassword });
+
+    // Log the activity
+    await this.activityLogger.logEvent(
+      EventType.PASSWORD_RESET,
+      `Admin ${currentUser.email} updated password for user ${user?.email}`,
+      EventSeverity.HIGH,
+      currentUser.id,
+      currentUser.email,
+      currentUser.role,
+      { 
+        action: 'UPDATE_USER_PASSWORD',
+        targetUserId: userId, 
+        targetUserEmail: user?.email, 
+        passwordGenerated: !newPassword 
+      }
+    );
+
+    // Send email with new password to user
+    await this.emailService.sendNewPasswordGenerated(
+      user?.email as string,
+      user?.firstName as string,
+      user?.lastName as string,
+      generatedPassword,
+      currentUser.email
+    );
+
+    this.logger.log(`🔐 Admin ${currentUser.email} updated password for user ${user?.email}`);
+
+    return {
+      success: true,
+      message: newPassword ? 'User password updated successfully' : 'New password generated and sent to user email',
+      data: {
+        userId: user?._id,
+        userEmail: user?.email,
+        updatedBy: currentUser.email,
+        updatedAt: new Date(),
+        passwordGenerated: !newPassword,
+        passwordSentToEmail: true
+      }
+    };
+  }
+
+  private generateSecurePassword(): string {
+    const length = 12;
+    const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+    let password = '';
+    
+    // Ensure at least one character from each category
+    password += 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 26)]; // lowercase
+    password += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 26)]; // uppercase
+    password += '0123456789'[Math.floor(Math.random() * 10)]; // number
+    password += '!@#$%^&*'[Math.floor(Math.random() * 8)]; // special character
+    
+    // Fill the rest randomly
+    for (let i = 4; i < length; i++) {
+      password += charset[Math.floor(Math.random() * charset.length)];
+    }
+    
+    // Shuffle the password
+    return password.split('').sort(() => Math.random() - 0.5).join('');
   }
 
   async logout(token: string) {
