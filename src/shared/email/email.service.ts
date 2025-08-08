@@ -509,6 +509,134 @@ export class EmailService {
     await this.sendEmail(email, '👑 System Administrator Account Created - Task Management System', htmlContent);
   }
 
+  async sendNewPasswordGenerated(
+    email: string,
+    firstName: string,
+    lastName: string,
+    password: string,
+    adminEmail: string,
+  ) {
+    const htmlContent = `
+      <div class="password-reset-section">
+        <h2>🔐 New Password Generated</h2>
+        <p>Hello <strong>${firstName} ${lastName}</strong>,</p>
+        <p>A new password has been generated for your account by a system administrator.</p>
+        <p>This action was performed by: <strong>${adminEmail}</strong></p>
+      </div>
+      
+      <div class="credentials-section">
+        <h3>🔑 Your New Login Credentials</h3>
+        <div class="credential-item">
+          <span class="credential-label">Email:</span>
+          <span class="credential-value">${email}</span>
+        </div>
+        <div class="credential-item">
+          <span class="credential-label">New Password:</span>
+          <span class="credential-value">
+            <span class="password-box">${password}</span>
+          </span>
+        </div>
+      </div>
+      
+      <div class="info-section">
+        <h4>⚠️ Important Security Information</h4>
+        <p>• Your password has been reset by an administrator</p>
+        <p>• Please login with the new password provided above</p>
+        <p>• For security reasons, we recommend changing your password after login</p>
+        <p>• If you didn't request this password reset, please contact your administrator immediately</p>
+      </div>
+      
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${this.configService.get('FRONTEND_URL')}" class="cta-button">
+          🔓 Login to Your Account
+        </a>
+      </div>
+      
+      <div class="security-notice">
+        <h4>🔒 Security Best Practices</h4>
+        <ul>
+          <li>Never share your password with anyone</li>
+          <li>Use a strong, unique password</li>
+          <li>Enable two-factor authentication if available</li>
+          <li>Log out when using shared devices</li>
+        </ul>
+      </div>
+      
+      <p style="color: #666; font-size: 14px; text-align: center;">
+        If you have any questions or concerns, please contact your system administrator at <strong>${adminEmail}</strong>.
+      </p>
+    `;
+
+    await this.sendEmail(email, '🔐 New Password Generated - Task Management System', htmlContent);
+  }
+
+  async sendForgotPasswordGenerated(
+    email: string,
+    firstName: string,
+    lastName: string,
+    password: string,
+  ) {
+    const htmlContent = `
+      <div class="forgot-password-section">
+        <h2>🔐 Password Reset Complete</h2>
+        <p>Hello <strong>${firstName} ${lastName}</strong>,</p>
+        <p>We received your password reset request and have generated a new secure password for your account.</p>
+        <p>Your account is now ready to use with the new credentials below.</p>
+      </div>
+      
+      <div class="credentials-section">
+        <h3>🔑 Your New Login Credentials</h3>
+        <div class="credential-item">
+          <span class="credential-label">Email:</span>
+          <span class="credential-value">${email}</span>
+        </div>
+        <div class="credential-item">
+          <span class="credential-label">New Password:</span>
+          <span class="credential-value">
+            <span class="password-box">${password}</span>
+          </span>
+        </div>
+      </div>
+      
+      <div class="info-section">
+        <h4>⚠️ Important Security Information</h4>
+        <p>• Your password has been successfully reset</p>
+        <p>• Please login with the new password provided above</p>
+        <p>• For security reasons, we strongly recommend changing your password after login</p>
+        <p>• If you didn't request this password reset, please contact support immediately</p>
+      </div>
+      
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${this.configService.get('FRONTEND_URL')}" class="cta-button">
+          🔓 Login to Your Account
+        </a>
+      </div>
+      
+      <div class="security-notice">
+        <h4>🔒 Security Best Practices</h4>
+        <ul>
+          <li>Never share your password with anyone</li>
+          <li>Use a strong, unique password</li>
+          <li>Enable two-factor authentication if available</li>
+          <li>Log out when using shared devices</li>
+          <li>Change your password regularly</li>
+        </ul>
+      </div>
+      
+      <div class="help-section">
+        <h4>💡 Need Help?</h4>
+        <p>If you have any questions or need assistance, please don't hesitate to contact our support team.</p>
+        <p>We're here to help you get back to managing your tasks efficiently!</p>
+      </div>
+      
+      <p style="color: #666; font-size: 14px; text-align: center;">
+        This password reset was requested at ${new Date().toLocaleString()}
+      </p>
+    `;
+
+    await this.sendEmail(email, '🔐 Password Reset Complete - Task Management System', htmlContent);
+  }
+
   async testEmail(email: string) {
     const htmlContent = `
       <div class="welcome-section">
