@@ -49,6 +49,7 @@ export enum EventAction {
   export enum SocketEvent {
     USER_EVENT = 'USER_EVENT',
     TASK_EVENT = 'TASK_EVENT',
+    ACTIVITY_EVENT = 'ACTIVITY_EVENT',
   }
 
   export enum EventSeverity {
@@ -77,8 +78,23 @@ export enum EventAction {
     action: EventAction; 
     timestamp: Date;
     details?: any;
+    createdAt: Date;
   }
-  
+
+  export interface ActivityUserDetails {
+    id: string;
+    email: string;
+    firstName?: string;
+    lastName?: string;
+    role: string;
+    teamId?: string;
+    isActive?: boolean;
+    isEmailVerified?: boolean;
+    createdAt?: Date | string;
+    updatedAt?: Date | string;
+  }
+
+
   export interface AdminDashboardStats {
    
       totalUsers: number;
@@ -98,14 +114,7 @@ export enum EventAction {
   }
   
   export interface UserActivityData {
-    recentLogins: LoginEvent[];
     recentUserEvents: UserEvent[];
-    activitySummary: {
-      totalActivities: number;
-      activitiesToday: number;
-      activitiesThisWeek: number;
-      activitiesThisMonth: number;
-    };
   }
   
 

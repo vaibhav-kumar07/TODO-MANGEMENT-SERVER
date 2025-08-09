@@ -83,30 +83,7 @@ export class DashboardService {
     try {
       this.logger.log(`📊 User activity requested`);
 
-      // Get current date ranges
-      const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      const monthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
-
-      // Recent Logins (Last 10)
-      const recentLoginsData = await this.userActivityModel
-        .find({ activityType: EventAction.LOGIN })
-        .sort({ timestamp: -1 })
-        .limit(10)
-        .populate('userId', 'email firstName lastName role')
-        .lean();
-
-      const recentLogins: LoginEvent[] = recentLoginsData.map(activity => ({
-        userId: (activity.userId as any)._id.toString(),
-        userEmail: (activity.userId as any).email,
-        userName: `${(activity.userId as any).firstName} ${(activity.userId as any).lastName}`,
-        userRole: (activity.userId as any).role,
-        timestamp: (activity as any).timestamp,
-        ipAddress: (activity as any).metadata?.ipAddress,
-        userAgent: (activity as any).metadata?.userAgent,
-      }));
-
+    
       // Recent User Events (Last 10) - All user-related activities
       const recentUserEventsData = await this.userActivityModel
         .find({ 
@@ -125,10 +102,11 @@ export class DashboardService {
             ] 
           } 
         })
-        .sort({ timestamp: -1 })
+        .sort({ createdAt: -1 })
         .limit(10)
         .populate('userId', 'email firstName lastName role')
         .lean();
+
 
       const recentUserEvents: UserEvent[] = recentUserEventsData.map(activity => ({
         userId: (activity.userId as any)._id.toString(),
@@ -138,35 +116,18 @@ export class DashboardService {
         action: (activity as any).activityType as EventAction,
         timestamp: (activity as any).timestamp,
         details: (activity as any).metadata,
+        createdAt: (activity as any).createdAt,
+
       }));
 
-      // Activity Summary
-      const totalActivities = await this.userActivityModel.countDocuments();
-      const activitiesToday = await this.userActivityModel.countDocuments({
-        timestamp: { $gte: today }
-      });
-      const activitiesThisWeek = await this.userActivityModel.countDocuments({
-        timestamp: { $gte: weekAgo }
-      });
-      const activitiesThisMonth = await this.userActivityModel.countDocuments({
-        timestamp: { $gte: monthAgo }
-      });
 
-      const activityData: UserActivityData = {
-        recentLogins,
-        recentUserEvents,
-        activitySummary: {
-          totalActivities,
-          activitiesToday,
-          activitiesThisWeek,
-          activitiesThisMonth,
-        }
-      };
 
       this.logger.log(`📈 User activity prepared successfully`);
       return {
         success: true,
-        data: activityData,
+        data: {
+          recentUserEvents,
+        },
         message: 'User activity retrieved successfully',
       };
     } catch (error) {
@@ -179,7 +140,5 @@ export class DashboardService {
     }
   }
 
-  async getAdminDashboardData() { return this.getDashboardStats(); }
-  async getManagerDashboardData(managerId: string) { return this.getDashboardStats(); }
-  async getMemberDashboardData(memberId: string) { return this.getDashboardStats(); }
+
 } 

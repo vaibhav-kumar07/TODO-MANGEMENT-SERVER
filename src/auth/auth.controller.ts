@@ -150,6 +150,18 @@ export class AuthController {
     return this.authService.adminUpdateUserPassword(userId, adminUpdateUserPasswordDto, req.user);
   }
 
+  @Post('admin/users/:userId/delete')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async adminDeleteUser(
+    @Param('userId') userId: string,
+    @Request() req: RequestWithUser,
+  ) {
+    this.logger.log(`🗑️ Admin delete user request - Admin ID: ${req.user.id}, Target User ID: ${userId}`);
+    return this.authService.adminDeleteUser(userId, req.user);
+  }
+
   @Post('logout')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)

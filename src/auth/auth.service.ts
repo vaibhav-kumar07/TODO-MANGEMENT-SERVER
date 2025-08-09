@@ -27,7 +27,7 @@ import { JwtConfigKey } from '../config/environment.enum';
 import { Types } from 'mongoose';
 import { ManagerUpdateUserDto } from './dto/manager-update-user.dto';
 import { DashboardGateway } from '../websocket/websocket.gateway';
-import { EventSeverity,  EventAction } from '../dashboard/interfaces/common';
+import { EventSeverity,  EventAction, UserEvent } from '../dashboard/interfaces/common';
 
 @Injectable()
 export class AuthService {
@@ -42,6 +42,38 @@ export class AuthService {
     private activityLogger: ActivityLoggerService,
     private dashboardGateway: DashboardGateway,
   ) {}
+
+  private mapActivityUserDetails(user: UserDocument) {
+    return {
+      id: (user._id as any).toString(),
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+      teamId: user.teamId ? (user.teamId as any).toString() : undefined,
+      isActive: user.isActive,
+      isEmailVerified: user.isEmailVerified,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+  
+    };
+  }
+
+  private buildUserEvent(action: EventAction, user: UserDocument, details?: any): UserEvent {
+    const firstName = user.firstName ?? '';
+    const lastName = user.lastName ?? '';
+    const userName = `${firstName} ${lastName}`.trim();
+    return {
+      userId: (user._id as any).toString(),
+      userEmail: user.email,
+      userName,
+      userRole: user.role.toString(),
+      action,
+      timestamp: new Date(),
+      details:{loginTime:new Date()},
+      createdAt: (user as any).createdAt ?? new Date(),
+    };
+  }
 
   async login(loginDto: LoginDto) {
     const { email, password } = loginDto;
@@ -91,8 +123,14 @@ export class AuthService {
       user!.role.toString(),
     );
 
-    // Emit generic user event counter for login
+    // Emit generic counters
     await this.dashboardGateway.emitUserEvent(EventAction.LOGIN, { isIncrement: true });
+
+    // Emit detailed activity event
+    await this.dashboardGateway.emitActivityEvent(
+      EventAction.LOGIN,
+      this.buildUserEvent(EventAction.LOGIN, user as any)
+    );
 
     return {
       accessToken,
@@ -173,8 +211,14 @@ export class AuthService {
       newUser.lastName,
       password // Send the original password in email
     );
-     // Emit generic user event counter for login
+     // Emit generic counters
      await this.dashboardGateway.emitUserEvent(EventAction.USER_CREATED, { isIncrement: true });
+
+     // Emit detailed activity event for user created
+     await this.dashboardGateway.emitActivityEvent(
+       EventAction.USER_CREATED,
+       this.buildUserEvent(EventAction.USER_CREATED, newUser as any)
+     );
 
     this.logger.log(`👑 New admin user created: ${email}`);
 
@@ -251,10 +295,23 @@ export class AuthService {
 
     await newUser.save();
 
-    // Emit generic user event counter for user created
+    // Emit generic counters for user created
     await this.dashboardGateway.emitUserEvent(EventAction.USER_CREATED, { isIncrement: true });
 
-    // Emit generic USER_EVENT for counters (already above)
+    // Emit detailed activity event
+    const inviterDoc = await this.userModel.findById(currentUser.id);
+    await this.dashboardGateway.emitActivityEvent(
+      EventAction.USER_CREATED,
+      this.buildUserEvent(EventAction.USER_CREATED, newUser as any, {
+        performedBy: inviterDoc
+          ? this.mapActivityUserDetails(inviterDoc as any)
+          : {
+              id: currentUser.id,
+              email: currentUser.email,
+              role: currentUser.role,
+            },
+      })
+    );
 
     if (newUser.role === UserRole.MANAGER) {
       await this.dashboardGateway.emitUserEvent(EventAction.MANAGER_ADDED, { isIncrement: true });
@@ -396,6 +453,12 @@ export class AuthService {
         'Unable to update the user profile'
       );
     }
+
+    // Emit detailed activity event
+    await this.dashboardGateway.emitActivityEvent(
+      EventAction.PROFILE_UPDATE,
+      this.buildUserEvent(EventAction.PROFILE_UPDATE, updatedUser as any)
+    );
 
     return {
       message: 'Profile updated successfully',
@@ -640,6 +703,43 @@ export class AuthService {
 
     this.logger.log(`✅ User updated successfully: ${updatedUser?.email} (${updatedUser?.role})`);
 
+    // Emit detailed activity events
+    const adminDoc = await this.userModel.findById(currentUser.id);
+    const performedBy = adminDoc ? this.mapActivityUserDetails(adminDoc as any) : {
+      id: currentUser.id,
+      email: currentUser.email,
+      role: currentUser.role,
+    };
+
+    // Activation changes
+    if (updateUserDto.isActive === true && !previousActive) {
+      await this.dashboardGateway.emitActivityEvent(
+        EventAction.USER_ACTIVATED,
+        this.buildUserEvent(EventAction.USER_ACTIVATED, updatedUser as any, { performedBy })
+      );
+    }
+    if (updateUserDto.isActive === false && previousActive) {
+      await this.dashboardGateway.emitActivityEvent(
+        EventAction.USER_DEACTIVATED,
+        this.buildUserEvent(EventAction.USER_DEACTIVATED, updatedUser as any, { performedBy })
+      );
+    }
+
+    // Role elevation
+    if (updateUserDto.role !== undefined) {
+      const newRole = updateUserDto.role;
+      if (previousRole === UserRole.MEMBER && newRole === UserRole.MANAGER) {
+        await this.dashboardGateway.emitActivityEvent(
+          EventAction.BECOME_MANAGER,
+          this.buildUserEvent(EventAction.BECOME_MANAGER, updatedUser as any, {
+            performedBy,
+            previousRole,
+            newRole,
+          })
+        );
+      }
+    }
+
     return {
       success: true,
       message: 'User updated successfully',
@@ -715,6 +815,7 @@ export class AuthService {
 
     // Build update data
     const updateData: any = {};
+    const previousActive = !!user.isActive;
     
     if (updateUserDto.firstName !== undefined) {
       updateData.firstName = updateUserDto.firstName;
@@ -740,6 +841,31 @@ export class AuthService {
     }
 
     this.logger.log(`✅ User updated successfully by manager: ${updatedUser?.email} (${updatedUser?.role})`);
+
+    // Emit detailed activity events
+    const managerDoc = await this.userModel.findById(currentUser.id);
+    const performedBy = managerDoc ? this.mapActivityUserDetails(managerDoc as any) : {
+      id: currentUser.id,
+      email: currentUser.email,
+      role: currentUser.role,
+    };
+
+    if (updateUserDto.isActive === true && !previousActive) {
+      await this.dashboardGateway.emitActivityEvent(
+        EventAction.USER_ACTIVATED,
+        this.buildUserEvent(EventAction.USER_ACTIVATED, updatedUser as any, { performedBy })
+      );
+    } else if (updateUserDto.isActive === false && previousActive) {
+      await this.dashboardGateway.emitActivityEvent(
+        EventAction.USER_DEACTIVATED,
+        this.buildUserEvent(EventAction.USER_DEACTIVATED, updatedUser as any, { performedBy })
+      );
+    } else {
+      await this.dashboardGateway.emitActivityEvent(
+        EventAction.PROFILE_UPDATE,
+        this.buildUserEvent(EventAction.PROFILE_UPDATE, updatedUser as any, { performedBy })
+      );
+    }
 
     return {
       success: true,
@@ -802,6 +928,12 @@ export class AuthService {
 
     this.logger.log(`🔐 Password reset completed for user: ${email}`);
 
+    // Emit detailed activity event
+    await this.dashboardGateway.emitActivityEvent(
+      EventAction.PASSWORD_RESET,
+      this.buildUserEvent(EventAction.PASSWORD_RESET, user as any)
+    );
+
     return { 
       success: true,
       message: 'If an account with this email exists, a new password has been generated and sent.' 
@@ -828,6 +960,11 @@ export class AuthService {
       // Update password
       const hashedPassword = await bcrypt.hash(newPassword, 12);
       await this.userModel.findByIdAndUpdate(user?._id, { password: hashedPassword });
+      // Emit detailed activity event
+      await this.dashboardGateway.emitActivityEvent(
+        EventAction.PASSWORD_RESET_SUCCESS,
+        this.buildUserEvent(EventAction.PASSWORD_RESET_SUCCESS, user as any)
+      );
       return { message: 'Password reset successfully' };
     } catch (error) {
       throwValidationError(
@@ -862,6 +999,17 @@ export class AuthService {
 
     // Send email notification to user
     await this.emailService.sendAdminPasswordResetNotification(email);
+
+    // Emit detailed activity event
+    const adminDoc = await this.userModel.findById(currentUser.id);
+    await this.dashboardGateway.emitActivityEvent(
+      EventAction.PASSWORD_RESET_SUCCESS,
+      this.buildUserEvent(EventAction.PASSWORD_RESET_SUCCESS, user as any, {
+        performedBy: adminDoc
+          ? this.mapActivityUserDetails(adminDoc as any)
+          : { id: currentUser.id, email: currentUser.email, role: currentUser.role },
+      })
+    );
 
     return { message: 'Password reset successfully by admin' };
   }
@@ -947,6 +1095,17 @@ export class AuthService {
 
     this.logger.log(`🔐 Admin ${currentUser.email} updated password for user ${user?.email}`);
 
+    // Emit detailed activity event
+    const adminDoc2 = await this.userModel.findById(currentUser.id);
+    await this.dashboardGateway.emitActivityEvent(
+      EventAction.PASSWORD_RESET_SUCCESS,
+      this.buildUserEvent(EventAction.PASSWORD_RESET_SUCCESS, user as any, {
+        performedBy: adminDoc2
+          ? this.mapActivityUserDetails(adminDoc2 as any)
+          : { id: currentUser.id, email: currentUser.email, role: currentUser.role },
+      })
+    );
+
     return {
       success: true,
       message: newPassword ? 'User password updated successfully' : 'New password generated and sent to user email',
@@ -958,6 +1117,98 @@ export class AuthService {
         passwordGenerated: !newPassword,
         passwordSentToEmail: true
       }
+    };
+  }
+
+  async adminDeleteUser(userId: string, currentUser: any) {
+    this.logger.log(`🗑️ Admin delete request - Admin ID: ${currentUser.id}, Target User ID: ${userId}`);
+
+    // Only admins can delete users
+    if (currentUser.role !== UserRole.ADMIN) {
+      throwAuthorizationError(
+        'Administrator access required',
+        'Only system administrators can delete users'
+      );
+    }
+
+    // Validate user ID
+    if (!Types.ObjectId.isValid(userId)) {
+      throwValidationError(
+        'Invalid user ID',
+        'The provided user ID is not valid'
+      );
+    }
+
+    const targetUser = await this.userModel.findById(userId);
+    if (!targetUser) {
+      throwBusinessError(
+        'User not found',
+        'The user you are trying to delete does not exist'
+      );
+    }
+    const user = targetUser as UserDocument;
+
+    // Prevent self-deletion and deleting admins
+    if ((user._id as any).toString() === currentUser.id) {
+      throwAuthorizationError(
+        'Self-deletion not allowed',
+        'Administrators cannot delete their own accounts'
+      );
+    }
+    if (user.role === UserRole.ADMIN) {
+      throwAuthorizationError(
+        'Admin deletion not allowed',
+        'Administrators cannot delete other administrator accounts'
+      );
+    }
+
+    // Perform deletion
+    await this.userModel.findByIdAndDelete(userId);
+
+    // Emit generic and role-specific decrement counters
+    await this.dashboardGateway.emitUserEvent(EventAction.USER_DELETED, { isIncrement: false });
+    if (user.role === UserRole.MANAGER) {
+      await this.dashboardGateway.emitUserEvent(EventAction.MANAGER_REMOVED, { isIncrement: false });
+    } else if (user.role === UserRole.MEMBER) {
+      await this.dashboardGateway.emitUserEvent(EventAction.MEMBER_REMOVED, { isIncrement: false });
+    }
+
+    // Emit detailed activity event
+    const adminDoc = await this.userModel.findById(currentUser.id);
+    await this.dashboardGateway.emitActivityEvent(
+      EventAction.USER_DELETED,
+      this.buildUserEvent(EventAction.USER_DELETED, user as any, {
+        performedBy: adminDoc
+          ? this.mapActivityUserDetails(adminDoc as any)
+          : { id: currentUser.id, email: currentUser.email, role: currentUser.role },
+      })
+    );
+
+    // Log event
+    await this.activityLogger.logEvent(
+      EventAction.USER_DELETED,
+      `Admin ${currentUser.email} deleted user ${user.email}`,
+      EventSeverity.HIGH,
+      currentUser.id,
+      currentUser.email,
+      currentUser.role,
+      {
+        targetUserId: userId,
+        targetUserEmail: user.email,
+        targetUserRole: user.role,
+      },
+    );
+
+    this.logger.log(`✅ User deleted successfully: ${user.email} (${user.role})`);
+
+    return {
+      success: true,
+      message: 'User deleted successfully',
+      data: {
+        deletedUserId: userId,
+        deletedUserEmail: user.email,
+        deletedUserRole: user.role,
+      },
     };
   }
 
@@ -982,10 +1233,31 @@ export class AuthService {
   }
 
   async logout(token: string) {
-    // For now, we'll just return success
-    // In a production system, you might want to blacklist the token
-    // This would require a Redis store or database table for blacklisted tokens
-    
+    try {
+      const payload: any = this.jwtService.verify(token);
+      const user = await this.userModel.findById(payload.sub);
+      if (user) {
+        // Log activity
+        await this.activityLogger.logUserLogout(
+          user._id as any,
+          user.email,
+          user.role.toString(),
+          undefined,
+          undefined,
+        );
+
+        // Emit counters
+        await this.dashboardGateway.emitUserEvent(EventAction.LOGOUT, { isIncrement: true });
+
+        // Emit detailed activity event
+        await this.dashboardGateway.emitActivityEvent(
+          EventAction.LOGOUT,
+          this.buildUserEvent(EventAction.LOGOUT, user as any)
+        );
+      }
+    } catch (e) {
+      // ignore token errors for logout flow
+    }
     return { message: 'Logged out successfully' };
   }
 } 

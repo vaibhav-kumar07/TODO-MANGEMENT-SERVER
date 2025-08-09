@@ -8,7 +8,8 @@ import {
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { EventAction } from '../dashboard/interfaces/common';
+import { EventAction, UserEvent } from '../dashboard/interfaces/common';
+import { SocketEvent } from '../dashboard/interfaces/common';
 import { TaskAction } from '../dashboard/interfaces/common'; 
 
 @WebSocketGateway({
@@ -142,6 +143,20 @@ export class DashboardGateway implements OnGatewayConnection, OnGatewayDisconnec
     }
   }
 
+  // Generic activity event with full user details
+  async emitActivityEvent(action: EventAction, data: UserEvent) {
+
+    try {
+      this.server.emit(SocketEvent.ACTIVITY_EVENT, {
+        ...data,
+        timestamp: new Date(),
+      });
+      this.logger.log(`📣 ACTIVITY_EVENT emitted: ${action}`);
+    } catch (error) {
+      this.logger.error(`❌ Failed to emit ACTIVITY_EVENT ${action}: ${error.message}`);
+    }
+  }
+
   getConnectedClients() {
     return Array.from(this.connectedClients.values()).map(client => ({
       id: client.socket.id,
@@ -152,13 +167,7 @@ export class DashboardGateway implements OnGatewayConnection, OnGatewayDisconnec
   // Manager-scoped task event
   async emitTaskEvent(managerId: string, action: TaskAction, isIncrement: boolean) {
     try {
-      // this.server.to(`${managerId}`).emit('TASK_EVENT', {
-      //   action,
-      //   isIncrement,
-      //   timestamp: Date.now(),
-      // });
       this.server.to(`manager:${managerId}`).emit('TASK_EVENT', {action, isIncrement, timestamp: Date.now()});
-
       this.logger.log(`🧩 TASK_EVENT emitted to manager:${managerId} - ${action} (increment=${isIncrement})`);
     } catch (error) {
       this.logger.error(`❌ Failed to emit TASK_EVENT ${action} to manager:${managerId}: ${error.message}`);
