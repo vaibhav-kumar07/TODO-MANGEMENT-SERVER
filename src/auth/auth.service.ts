@@ -1254,6 +1254,8 @@ export class AuthService {
           EventAction.LOGOUT,
           this.buildUserEvent(EventAction.LOGOUT, user as any)
         );
+
+        return {  success: true,message: 'Logged out successfully' };
       }
     } catch (e) {
       // ignore token errors for logout flow

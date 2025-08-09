@@ -344,7 +344,7 @@ export class TasksService {
     return updatedTask as Task;
   }
 
-  async remove(id: string, userId: string): Promise<void> {
+  async remove(id: string, userId: string): Promise<any> {
     const user = await this.userModel.findById(userId);
     if (!user) {
       throw new NotFoundException('User not found');
@@ -372,6 +372,10 @@ export class TasksService {
     }
 
     await this.taskModel.findByIdAndDelete(id);
+    return {
+      success: true,
+      message: 'Task deleted successfully'
+    };
   }
 
   async getMyTaskStats(userId: string): Promise<any> {

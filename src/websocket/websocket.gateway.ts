@@ -149,7 +149,6 @@ export class DashboardGateway implements OnGatewayConnection, OnGatewayDisconnec
     try {
       this.server.emit(SocketEvent.ACTIVITY_EVENT, {
         ...data,
-        timestamp: new Date(),
       });
       this.logger.log(`📣 ACTIVITY_EVENT emitted: ${action}`);
     } catch (error) {
