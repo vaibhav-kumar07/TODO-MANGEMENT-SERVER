@@ -108,17 +108,29 @@ export class DashboardService {
         .lean();
 
 
-      const recentUserEvents: UserEvent[] = recentUserEventsData.map(activity => ({
-        userId: (activity.userId as any)._id.toString(),
-        userEmail: (activity.userId as any).email,
-        userName: `${(activity.userId as any).firstName} ${(activity.userId as any).lastName}`,
-        userRole: (activity.userId as any).role,
-        action: (activity as any).activityType as EventAction,
-        timestamp: (activity as any).timestamp,
-        details: (activity as any).metadata,
-        createdAt: (activity as any).createdAt,
 
-      }));
+      const recentUserEvents: UserEvent[] = recentUserEventsData.map((activity: any) => {
+        const populatedUser = activity.userId as any;
+        const fallbackUserId = activity.userId; // may be ObjectId or null after populate
+
+        const safeUserId = populatedUser?. _id?.toString?.() 
+          ?? (typeof fallbackUserId === 'object' && fallbackUserId ? fallbackUserId.toString() : '');
+
+        const firstName = populatedUser?.firstName ?? '';
+        const lastName = populatedUser?.lastName ?? '';
+        const userName = `${firstName} ${lastName}`.trim();
+
+        return {
+          userId: safeUserId,
+          userEmail: populatedUser?.email ?? activity.userEmail ?? '',
+          userName,
+          userRole: populatedUser?.role ?? activity.userRole ?? '',
+          action: activity.activityType as EventAction,
+          timestamp: activity.activityTime ?? activity.createdAt ?? new Date(),
+          details: activity.metadata,
+          createdAt: activity.createdAt,
+        } as UserEvent;
+      });
 
 
 
