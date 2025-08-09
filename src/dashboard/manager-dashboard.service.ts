@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Task, TaskDocument, TaskStatus, TaskPriority } from '../tasks/schemas/task.schema';
+import { Task, TaskDocument, TaskStatus } from '../tasks/schemas/task.schema';
 import { User, UserDocument } from '../users/schemas/user.schema';
 import { DashboardGateway } from '../websocket/websocket.gateway';
-import { ManagerStats, ManagerActivityData, TaskEvent, TaskEventType } from './interfaces/manager-dashboard';
+import { ManagerDashboardStats, ManagerActivityData, TaskEvent, TaskAction } from './interfaces/common';
 
 @Injectable()
 export class ManagerDashboardService {
@@ -16,121 +16,31 @@ export class ManagerDashboardService {
     private dashboardGateway: DashboardGateway,
   ) {}
 
-  async getManagerStats(managerId: string): Promise<{ success: boolean; data?: ManagerStats; error?: string; message: string }> {
+  async getManagerStats(managerId: string): Promise<{ success: boolean; data?: ManagerDashboardStats; error?: string; message: string }> {
     try {
       this.logger.log(`📊 Manager stats requested for manager: ${managerId}`);
 
-      // Get current date range for today's stats
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      // Get members who have tasks assigned by this manager
-      const membersWithTasks = await this.taskModel.distinct('assignedTo', {
-        // createdBy: managerId
-      });
-
-      // Task Statistics
-      const totalTasks = await this.taskModel.countDocuments({
-        createdBy: managerId
-      });
-
-      const tasksCreatedToday = await this.taskModel.countDocuments({
-        // assignedBy: managerId,
-        createdAt: { $gte: today }
-      });
-
-      const pendingTasks = await this.taskModel.countDocuments({
-        assignedBy: managerId,
-        status: TaskStatus.TODO
-      });
-
-      const completedTasks = await this.taskModel.countDocuments({
-        createdBy: managerId,
-        status: TaskStatus.COMPLETED
-      });
-
-      const overdueTasks = await this.taskModel.countDocuments({
-        createdBy: managerId,
-        dueDate: { $lt: new Date() },
-        status: { $ne: TaskStatus.COMPLETED }
-      });
-
-      const highPriorityTasks = await this.taskModel.countDocuments({
-        createdBy: managerId,
-        priority: TaskPriority.HIGH,
-        status: { $ne: TaskStatus.COMPLETED }
-      });
-
-      const dueTodayTasks = await this.taskModel.countDocuments({
-        // assignedBy: managerId,
-        dueDate: {
-          $gte: today,
-          $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000)
-        },
-        status: { $ne: TaskStatus.COMPLETED }
-      });
-
-      // Member Statistics
-      const totalMembers = membersWithTasks.length;
-
-      const membersAddedToday = await this.taskModel.countDocuments({
-        // assignedBy: managerId,
-        createdAt: { $gte: today }
-      });
-
-      const membersWithActiveTasks = await this.taskModel.distinct('assignedTo', {
-        // assignedBy: managerId,
-        status: { $ne: TaskStatus.COMPLETED }
-      }).then(ids => ids.length);
-
-      const membersWithoutTasks = totalMembers - membersWithActiveTasks;
-
-      // Today's Activity Summary
-      const todaysSummary = {
-        tasksCreated: tasksCreatedToday,
-        tasksCompleted: await this.taskModel.countDocuments({
-          // assignedBy: managerId,
-          completedAt: { $gte: today }
+      // Task Statistics (scoped to manager)
+      const [totalTasks, overdueTasks, completedTasks, inProgressTasks] = await Promise.all([
+        this.taskModel.countDocuments({ createdBy: managerId }),
+        this.taskModel.countDocuments({
+          createdBy: managerId,
+          dueDate: { $lt: new Date() },
+          status: { $ne: TaskStatus.COMPLETED },
         }),
-        tasksAssigned: await this.taskModel.countDocuments({
-          // assignedBy: managerId,
-          lastAssignedAt: { $gte: today }
-        }),
-        tasksUpdated: await this.taskModel.countDocuments({
-          // assignedBy: managerId,
-          updatedAt: { $gte: today }
-        }),
-        tasksDeleted: await this.taskModel.countDocuments({
-          // assignedBy: managerId,
-          deletedAt: { $gte: today }
-        }),
-        statusChanges: await this.taskModel.countDocuments({
-          // assignedBy: managerId,
-          'statusHistory.timestamp': { $gte: today }
-        }),
-        priorityChanges: await this.taskModel.countDocuments({
-          assignedBy: managerId,
-          'priorityHistory.timestamp': { $gte: today }
-        }),
-        dueDateChanges: await this.taskModel.countDocuments({
-          assignedBy: managerId,
-          'dueDateHistory.timestamp': { $gte: today }
-        })
-      };
+        this.taskModel.countDocuments({ createdBy: managerId, status: TaskStatus.COMPLETED }),
+        this.taskModel.countDocuments({ createdBy: managerId, status: TaskStatus.IN_PROGRESS }),
+      ]);
 
-      const stats: ManagerStats = {
+      const stats: ManagerDashboardStats = {
         totalTasks,
-        tasksCreatedToday,
-        pendingTasks,
-        completedTasks,
         overdueTasks,
-        highPriorityTasks,
-        dueTodayTasks,
-        totalMembers,
-        membersAddedToday,
-        membersWithTasks: membersWithActiveTasks,
-        membersWithoutTasks,
-        todaysSummary
+        completedTasks,
+        inProgressTasks,
+        info:{
+            managerId,
+        }
+
       };
 
       this.logger.log(`📈 Manager stats prepared successfully for manager: ${managerId}`);
@@ -176,10 +86,10 @@ export class ManagerDashboardService {
           const performedBy = task.lastUpdatedBy || task.createdBy;
           
           // Determine event type based on what changed
-          let eventType = TaskEventType.TASK_UPDATED;
+          let eventType = TaskAction.TASK_CREATED;
           if (task.createdAt && task.updatedAt && 
               Math.abs(task.createdAt.getTime() - task.updatedAt.getTime()) < 1000) {
-            eventType = TaskEventType.TASK_CREATED;
+            eventType = TaskAction.TASK_CREATED;
           }
 
           return {
@@ -204,37 +114,10 @@ export class ManagerDashboardService {
           };
         });
 
-      // Get today's activity summary by event type - no manager filtering
-      const todaysSummary = {
-        [TaskEventType.TASK_CREATED]: await this.taskModel.countDocuments({
-          createdAt: { $gte: today }
-        }),
-        [TaskEventType.TASK_UPDATED]: await this.taskModel.countDocuments({
-          updatedAt: { $gte: today }
-        }),
-        [TaskEventType.TASK_DELETED]: await this.taskModel.countDocuments({
-          deletedAt: { $gte: today }
-        }),
-        [TaskEventType.TASK_ASSIGNED]: await this.taskModel.countDocuments({
-          lastAssignedAt: { $gte: today }
-        }),
-        [TaskEventType.TASK_COMPLETED]: await this.taskModel.countDocuments({
-          completedAt: { $gte: today }
-        }),
-        [TaskEventType.TASK_STATUS_CHANGED]: await this.taskModel.countDocuments({
-          'statusHistory.timestamp': { $gte: today }
-        }),
-        [TaskEventType.TASK_PRIORITY_CHANGED]: await this.taskModel.countDocuments({
-          'priorityHistory.timestamp': { $gte: today }
-        }),
-        [TaskEventType.TASK_DUE_DATE_CHANGED]: await this.taskModel.countDocuments({
-          'dueDateHistory.timestamp': { $gte: today }
-        })
-      };
+    
 
       const activityData: ManagerActivityData = {
         recentTaskEvents,
-        todaysSummary
       };
 
       this.logger.log(`📈 Manager activity prepared successfully for manager: ${managerId}`);
@@ -253,23 +136,9 @@ export class ManagerDashboardService {
     }
   }
 
-  // Event emission methods for each task event type
-  async emitTaskEvent(eventType: TaskEventType, taskId: string, taskData: any, managerId: string) {
-    try {
-      const eventPayload = {
-        taskId,
-        ...taskData,
-        eventType,
-        timestamp: Date.now()
-      };
-
-      // Emit to the manager's room
-      this.dashboardGateway.server.to(`manager-${managerId}`).emit(eventType, eventPayload);
-
-      this.logger.log(`📤 Emitted ${eventType} event for task: ${taskId}`);
-    } catch (error) {
-      this.logger.error(`❌ Failed to emit ${eventType} event: ${error.message}`);
-    }
+  // Emit compact task counters to manager room
+  async emitTaskCounter(managerId: string, action: TaskAction, isIncrement: boolean) {
+    await this.dashboardGateway.emitTaskEvent(managerId, action, isIncrement);
   }
 
 

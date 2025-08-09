@@ -8,7 +8,6 @@ import { TasksModule } from './tasks/tasks.module';
 import { SharedModule } from './shared/shared.module';
 import { CommonModule } from './common/common.module';
 import { ConfigModule } from './config/config.module';
-import { AppConfigService } from './config/app.config.service';
 import { DatabaseService } from './database.service';
 import { DatabaseConfigKey } from './config/environment.enum';
 import { DashboardModule } from './dashboard/dashboard.module';

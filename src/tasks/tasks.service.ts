@@ -1,12 +1,14 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { Task, TaskDocument, TaskStatus } from './schemas/task.schema';
+import { Task, TaskDocument, TaskStatus, TaskPriority } from './schemas/task.schema';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { QueryTasksDto,  } from './dto/query-tasks.dto';
 import { User, UserRole } from '../users/schemas/user.schema';
 import { Logger } from '@nestjs/common';
+import { DashboardGateway } from '../websocket/websocket.gateway';
+import { TaskAction } from '../dashboard/interfaces/common'; 
 
 @Injectable()
 export class TasksService {
@@ -15,6 +17,7 @@ export class TasksService {
   constructor(
     @InjectModel(Task.name) private taskModel: Model<TaskDocument>,
     @InjectModel(User.name) private userModel: Model<User>,
+    private dashboardGateway: DashboardGateway,
   ) {}
 
   async createTask(createTaskDto: CreateTaskDto, userId: string): Promise<Task> {
@@ -76,6 +79,27 @@ export class TasksService {
       throw new NotFoundException('Failed to create task');
     }
     
+    // Emit manager-scoped task counter for project tasks only
+    if (!populatedTask.isPersonal) {
+      // Use reliable manager identifier. Since this action is performed by the manager,
+      // we can safely use userId here instead of relying on a populated document.
+      const managerId = userId;
+      await this.dashboardGateway.emitTaskEvent(managerId, TaskAction.TASK_CREATED, true);
+      if (populatedTask.priority === TaskPriority.HIGH) {
+        await this.dashboardGateway.emitTaskEvent(managerId, TaskAction.TASK_HIGH_PRIORITY, true);
+      }
+      if (populatedTask.dueDate) {
+        await this.dashboardGateway.emitTaskEvent(managerId, TaskAction.TASK_DUE_DATE, true);
+      }
+      // Initial status counters
+      if (populatedTask.status === TaskStatus.COMPLETED) {
+        await this.dashboardGateway.emitTaskEvent(managerId, TaskAction.TASK_COMPLETED, true);
+      }
+      if (populatedTask.status === TaskStatus.IN_PROGRESS) {
+        await this.dashboardGateway.emitTaskEvent(managerId, TaskAction.TASK_IN_PROGRESS, true);
+      }
+    }
+
     return populatedTask;
   }
 
@@ -262,6 +286,9 @@ export class TasksService {
       updateData.assignedTo = new Types.ObjectId(updateTaskDto.assignedTo);
     }
 
+    const previousDueDate = task.dueDate;
+    const previousStatus = task.status;
+
     const updatedTask = await this.taskModel
       .findByIdAndUpdate(id, updateData, { new: true })
       .populate('assignedTo', 'firstName lastName email')
@@ -271,6 +298,47 @@ export class TasksService {
 
     if (!updatedTask) {
       throw new NotFoundException('Task not found');
+    }
+
+    // Emit manager-scoped task counters for project tasks only
+    if (!updatedTask.isPersonal) {
+      // Ensure we extract the correct manager id regardless of population state
+      const managerId = ((updatedTask as any).createdBy?._id?.toString?.())
+        || ((updatedTask as any).createdBy?.toString?.())
+        || '';
+     
+      // Due date set/cleared
+      if (updateTaskDto.dueDate !== undefined) {
+        const hadDueDate = !!previousDueDate;
+        const hasDueDateNow = !!updateTaskDto.dueDate;
+        if (!hadDueDate && hasDueDateNow) {
+          await this.dashboardGateway.emitTaskEvent(managerId, TaskAction.TASK_DUE_DATE, true);
+        }
+        if (hadDueDate && !hasDueDateNow) {
+          await this.dashboardGateway.emitTaskEvent(managerId, TaskAction.TASK_DUE_DATE, false);
+        }
+      }
+
+      // Status transitions for counters (COMPLETED / IN_PROGRESS)
+      if (updateTaskDto.status && updateTaskDto.status !== previousStatus) {
+        if (updateTaskDto.status === TaskStatus.COMPLETED) {
+          console.log(`🔄 Task ${id} completed by manager ${managerId}`);
+          await this.dashboardGateway.emitTaskEvent(managerId, TaskAction.TASK_COMPLETED, true);
+          // Leaving IN_PROGRESS → decrement if coming from that
+          if (previousStatus === TaskStatus.IN_PROGRESS) {
+            await this.dashboardGateway.emitTaskEvent(managerId, TaskAction.TASK_IN_PROGRESS, false);
+          }
+        } else if (previousStatus === TaskStatus.COMPLETED) {
+          // No longer completed → decrement completed
+          await this.dashboardGateway.emitTaskEvent(managerId, TaskAction.TASK_COMPLETED, false);
+        }
+
+        if (updateTaskDto.status === TaskStatus.IN_PROGRESS) {
+          await this.dashboardGateway.emitTaskEvent(managerId, TaskAction.TASK_IN_PROGRESS, true);
+        } else if (previousStatus === TaskStatus.IN_PROGRESS) {
+          await this.dashboardGateway.emitTaskEvent(managerId, TaskAction.TASK_IN_PROGRESS, false);
+        }
+      }
     }
 
     return updatedTask as Task;

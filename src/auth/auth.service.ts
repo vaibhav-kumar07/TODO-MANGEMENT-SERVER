@@ -16,8 +16,7 @@ import { AdminUpdateUserDto } from './dto/admin-update-user.dto';
 import { AdminUpdateUserPasswordDto } from './dto/admin-update-user-password.dto';
 import { EmailService } from '../shared/email/email.service';
 import { SeedService } from '../shared/database/seed.service';
-import { ActivityLoggerService } from '../shared/services/activity-logger.service';
-import { EventSeverity, EventType } from '../shared/schemas/event-log.schema';
+import { ActivityLoggerService } from '../shared/services/activity-logger.service'
 import { 
   throwValidationError, 
   throwAuthenticationError, 
@@ -28,6 +27,7 @@ import { JwtConfigKey } from '../config/environment.enum';
 import { Types } from 'mongoose';
 import { ManagerUpdateUserDto } from './dto/manager-update-user.dto';
 import { DashboardGateway } from '../websocket/websocket.gateway';
+import { EventSeverity,  EventAction } from '../dashboard/interfaces/common';
 
 @Injectable()
 export class AuthService {
@@ -91,13 +91,8 @@ export class AuthService {
       user!.role.toString(),
     );
 
-    // Emit login event via WebSocket
-    await this.dashboardGateway.emitLoginEvent(user!._id as any, {
-      id: user!._id,
-      email: user!.email,
-      role: user!.role,
-      name: `${user!.firstName} ${user!.lastName}`,
-    });
+    // Emit generic user event counter for login
+    await this.dashboardGateway.emitUserEvent(EventAction.LOGIN, { isIncrement: true });
 
     return {
       accessToken,
@@ -157,9 +152,9 @@ export class AuthService {
 
     // Log admin signup activity
     await this.activityLogger.logEvent(
-      EventType.USER_REGISTER,
+      EventAction.USER_REGISTER,
       `New admin user registered: ${email}`,
-      EventSeverity.LOW,
+      EventSeverity.LOW ,  
       newUser._id as any,
       newUser.email,
       newUser.role.toString(),
@@ -178,6 +173,8 @@ export class AuthService {
       newUser.lastName,
       password // Send the original password in email
     );
+     // Emit generic user event counter for login
+     await this.dashboardGateway.emitUserEvent(EventAction.USER_CREATED, { isIncrement: true });
 
     this.logger.log(`👑 New admin user created: ${email}`);
 
@@ -254,21 +251,16 @@ export class AuthService {
 
     await newUser.save();
 
-    // Emit user created event via WebSocket
-    await this.dashboardGateway.emitUserCreatedEvent(
-      newUser._id as any,
-      {
-        id: newUser._id,
-        email: newUser.email,
-        role: newUser.role,
-        name: `${newUser.firstName} ${newUser.lastName}`,
-      },
-      {
-        id: currentUser.id,
-        email: currentUser.email,
-        role: currentUser.role,
-      }
-    );
+    // Emit generic user event counter for user created
+    await this.dashboardGateway.emitUserEvent(EventAction.USER_CREATED, { isIncrement: true });
+
+    // Emit generic USER_EVENT for counters (already above)
+
+    if (newUser.role === UserRole.MANAGER) {
+      await this.dashboardGateway.emitUserEvent(EventAction.MANAGER_ADDED, { isIncrement: true });
+    } else if (newUser.role === UserRole.MEMBER) {
+      await this.dashboardGateway.emitUserEvent(EventAction.MEMBER_ADDED, { isIncrement: true });
+    }
 
     // Send invitation email
     await this.emailService.sendUserInvitation(
@@ -580,6 +572,8 @@ export class AuthService {
     }
 
     const updateData: any = {};
+    const previousRole = user!.role;
+    const previousActive = !!user!.isActive;
 
     // Update fields if provided
     if (updateUserDto.firstName !== undefined) {
@@ -610,23 +604,39 @@ export class AuthService {
       );
     }
 
-    // Emit user activated event if user was activated
-    if (updateUserDto.isActive === true && !user?.isActive) {
-      await this.dashboardGateway.emitUserActivatedEvent(
-        updatedUser?._id as any,
-        {
-          id: updatedUser?._id,
-          email: updatedUser?.email,
-          role: updatedUser?.role,
-          name: `${updatedUser?.firstName} ${updatedUser?.lastName}`,
-        },
-        {
-          id: currentUser.id,
-          email: currentUser.email,
-          role: currentUser.role,
+      // Activated
+      if (updateUserDto.isActive === true ) {
+        // Activation specific event counter can be derived by role added
+        // Generic counters by role
+        if (updatedUser?.role === UserRole.MEMBER && !previousActive) {
+          await this.dashboardGateway.emitUserEvent(EventAction.MEMBER_ADDED, { isIncrement: true });
         }
-      );
-    }
+        if (updatedUser?.role === UserRole.MANAGER && !previousActive) {
+          await this.dashboardGateway.emitUserEvent(EventAction.MANAGER_ADDED, { isIncrement: true });
+        }
+      }
+
+      // Deactivated
+      if (updateUserDto.isActive === false ) {
+        // Deactivation specific event counter can be derived by role removed
+        // Generic counters by role
+        if (updatedUser?.role === UserRole.MEMBER && previousActive) {
+          await this.dashboardGateway.emitUserEvent(EventAction.MEMBER_REMOVED, { isIncrement: false });
+        }
+        if (updatedUser?.role === UserRole.MANAGER && previousActive) {
+          await this.dashboardGateway.emitUserEvent(EventAction.MANAGER_REMOVED, { isIncrement: false });
+        }
+      }
+
+      // Role elevation: MEMBER -> MANAGER
+      if (updateUserDto.role !== undefined) {
+        const newRole = updateUserDto.role;
+        if (previousRole === UserRole.MEMBER && newRole === UserRole.MANAGER) {
+          await this.dashboardGateway.emitUserEvent(EventAction.BECOME_MANAGER, { isIncrement: true });
+          await this.dashboardGateway.emitUserEvent(EventAction.MANAGER_ADDED, { isIncrement: true });
+        }
+      }
+    
 
     this.logger.log(`✅ User updated successfully: ${updatedUser?.email} (${updatedUser?.role})`);
 
@@ -770,7 +780,7 @@ export class AuthService {
 
     // Log password reset activity
     await this.activityLogger.logEvent(
-      EventType.PASSWORD_RESET,
+      EventAction.PASSWORD_RESET,
       `Password reset via forgot password for user: ${email}`,
       EventSeverity.MEDIUM,
       user._id as any,
@@ -912,7 +922,7 @@ export class AuthService {
 
     // Log the activity
     await this.activityLogger.logEvent(
-      EventType.PASSWORD_RESET,
+      EventAction.PASSWORD_RESET,
       `Admin ${currentUser.email} updated password for user ${user?.email}`,
       EventSeverity.HIGH,
       currentUser.id,

@@ -8,14 +8,14 @@ import {
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { EventType } from '../dashboard/dashboard.service';
+import { EventAction } from '../dashboard/interfaces/common';
+import { TaskAction } from '../dashboard/interfaces/common'; 
 
 @WebSocketGateway({
   namespace: '/dashboard',
   cors: {
-    origin: 'http://localhost:3000',
-    credentials: true,
-  }
+    origin:'http://localhost:3000',
+  },
 })
 
 export class DashboardGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit {
@@ -74,7 +74,15 @@ export class DashboardGateway implements OnGatewayConnection, OnGatewayDisconnec
       // Join role-specific room
       client.join(`role-${user.role}`);
       client.join(`user-${user.id}`);
+      if (user.role === "MANAGER") {
+        client.on('JOIN_MANAGER_ROOM', (managerId: string) => {
+          client.join(`manager:${managerId}`);
+          client.emit('JOINED_MANAGER_ROOM', { room: `manager:${managerId}` });
+        });
+        this.logger.log(`✅ Client joined manager room: ${user.id}`);
+      }
 
+     
       this.logger.log(`✅ Client connected: ${user.email} (${user.role}) - ID: ${client.id}`);
       this.logger.log(`📊 Total connected clients: ${this.connectedClients.size}`);
       
@@ -118,126 +126,19 @@ export class DashboardGateway implements OnGatewayConnection, OnGatewayDisconnec
     }
   }
 
-  // Method to emit login events
-  async emitLoginEvent(userId: string, userData: any) {
-    try {
-      this.server.emit(EventType.LOGIN, {
-        userId,
-        user: userData,
-        timestamp: Date.now(),
-        eventType: EventType.LOGIN
-      });
-      this.logger.log(`👤 Login event emitted for user: ${userData.email}`);
-    } catch (error) {
-      this.logger.error(`❌ Failed to emit login event: ${error.message}`);
-    }
-  }
+  
 
-  // Method to emit logout events
-  async emitLogoutEvent(userId: string, userData: any) {
+  // Generic user event for aggregated counters
+  async emitUserEvent(action: EventAction, data: {  isIncrement: boolean }) {
     try {
-      this.server.emit(EventType.LOGOUT, {
-        userId,
-        user: userData,
+      this.server.emit('USER_EVENT', {
+        action,
+        isIncrement: data.isIncrement,
         timestamp: Date.now(),
-        eventType: EventType.LOGOUT
       });
-      this.logger.log(`👤 Logout event emitted for user: ${userData.email}`);
+      this.logger.log(`📣 USER_EVENT emitted: ${action} (increment=${data.isIncrement})`);
     } catch (error) {
-      this.logger.error(`❌ Failed to emit logout event: ${error.message}`);
-    }
-  }
-
-  // Method to emit user created events
-  async emitUserCreatedEvent(userId: string, userData: any, createdBy?: any) {
-    try {
-      this.server.emit(EventType.USER_CREATED, {
-        userId,
-        user: userData,
-        timestamp: Date.now(),
-        eventType: EventType.USER_CREATED,
-        details: {
-          createdBy: createdBy ? { id: createdBy.id, email: createdBy.email, role: createdBy.role } : null,
-          userRole: userData.role
-        }
-      });
-      this.logger.log(`👤 User created event emitted for user: ${userData.email}`);
-    } catch (error) {
-      this.logger.error(`❌ Failed to emit user created event: ${error.message}`);
-    }
-  }
-
-  // Method to emit user activated events
-  async emitUserActivatedEvent(userId: string, userData: any, activatedBy?: any) {
-    try {
-      this.server.emit(EventType.USER_ACTIVATED, {
-        userId,
-        user: userData,
-        timestamp: Date.now(),
-        eventType: EventType.USER_ACTIVATED,
-        details: {
-          activatedBy: activatedBy ? { id: activatedBy.id, email: activatedBy.email, role: activatedBy.role } : null
-        }
-      });
-      this.logger.log(`👤 User activated event emitted for user: ${userData.email}`);
-    } catch (error) {
-      this.logger.error(`❌ Failed to emit user activated event: ${error.message}`);
-    }
-  }
-
-  // Method to emit member added to team events
-  async emitMemberAddedEvent(userId: string, userData: any, teamId: string, teamName: string, addedBy?: any) {
-    try {
-      this.server.emit(EventType.MEMBER_ADDED, {
-        userId,
-        user: userData,
-        timestamp: Date.now(),
-        eventType: EventType.MEMBER_ADDED,
-        details: {
-          teamId,
-          teamName,
-          addedBy: addedBy ? { id: addedBy.id, email: addedBy.email, role: addedBy.role } : null
-        }
-      });
-      this.logger.log(`👤 Member added event emitted for user: ${userData.email} to team: ${teamName}`);
-    } catch (error) {
-      this.logger.error(`❌ Failed to emit member added event: ${error.message}`);
-    }
-  }
-
-  // Method to emit member removed from team events
-  async emitMemberRemovedEvent(userId: string, userData: any, teamId: string, teamName: string, removedBy?: any) {
-    try {
-      this.server.emit(EventType.MEMBER_REMOVED, {
-        userId,
-        user: userData,
-        timestamp: Date.now(),
-        eventType: EventType.MEMBER_REMOVED,
-        details: {
-          teamId,
-          teamName,
-          removedBy: removedBy ? { id: removedBy.id, email: removedBy.email, role: removedBy.role } : null
-        }
-      });
-      this.logger.log(`👤 Member removed event emitted for user: ${userData.email} from team: ${teamName}`);
-    } catch (error) {
-      this.logger.error(`❌ Failed to emit member removed event: ${error.message}`);
-    }
-  }
-
-  // Method to emit any user activity event
-  async emitUserActivityEvent(eventType: EventType, userId: string, userData: any, details?: any) {
-    try {
-      this.server.emit(eventType, {
-        userId,
-        user: userData,
-        timestamp: Date.now(),
-        eventType,
-        details
-      });
-      this.logger.log(`👤 ${eventType} event emitted for user: ${userData.email}`);
-    } catch (error) {
-      this.logger.error(`❌ Failed to emit ${eventType} event: ${error.message}`);
+      this.logger.error(`❌ Failed to emit USER_EVENT ${action}: ${error.message}`);
     }
   }
 
@@ -246,5 +147,21 @@ export class DashboardGateway implements OnGatewayConnection, OnGatewayDisconnec
       id: client.socket.id,
       user: client.user
     }));
+  }
+
+  // Manager-scoped task event
+  async emitTaskEvent(managerId: string, action: TaskAction, isIncrement: boolean) {
+    try {
+      // this.server.to(`${managerId}`).emit('TASK_EVENT', {
+      //   action,
+      //   isIncrement,
+      //   timestamp: Date.now(),
+      // });
+      this.server.to(`manager:${managerId}`).emit('TASK_EVENT', {action, isIncrement, timestamp: Date.now()});
+
+      this.logger.log(`🧩 TASK_EVENT emitted to manager:${managerId} - ${action} (increment=${isIncrement})`);
+    } catch (error) {
+      this.logger.error(`❌ Failed to emit TASK_EVENT ${action} to manager:${managerId}: ${error.message}`);
+    }
   }
 } 

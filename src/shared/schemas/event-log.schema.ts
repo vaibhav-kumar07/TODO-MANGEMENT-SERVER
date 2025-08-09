@@ -1,38 +1,12 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
-
+import { EventAction, EventSeverity } from 'src/dashboard/interfaces/common';
 export type EventLogDocument = EventLog & Document;
-
-export enum EventType {
-  USER_LOGIN = 'USER_LOGIN',
-  USER_LOGOUT = 'USER_LOGOUT',
-  USER_REGISTER = 'USER_REGISTER',
-  USER_INVITATION = 'USER_INVITATION',
-  USER_INVITATION_SUCCESS = 'USER_INVITATION_SUCCESS',
-  USER_INVITATION_FAILED = 'USER_INVITATION_FAILED',
-  USER_INVITATION_EXPIRED = 'USER_INVITATION_EXPIRED',
-  PASSWORD_RESET = 'PASSWORD_RESET',
-  PASSWORD_RESET_SUCCESS = 'PASSWORD_RESET_SUCCESS',
-  PASSWORD_RESET_FAILED = 'PASSWORD_RESET_FAILED',
-  TASK_CREATED = 'TASK_CREATED',
-  TASK_UPDATED = 'TASK_UPDATED',
-  TASK_DELETED = 'TASK_DELETED',
-  TASK_COMPLETED = 'TASK_COMPLETED',
-  SYSTEM_ALERT = 'SYSTEM_ALERT',
-  DASHBOARD_ACCESS = 'DASHBOARD_ACCESS',
-}
-
-export enum EventSeverity {
-  LOW = 'LOW',
-  MEDIUM = 'MEDIUM',
-  HIGH = 'HIGH',
-  CRITICAL = 'CRITICAL',
-}
 
 @Schema({ timestamps: true })
 export class EventLog {
-  @Prop({ required: true, enum: EventType })
-  type: EventType;
+  @Prop({ required: true, enum: EventAction }) 
+  type: EventAction;
 
   @Prop({ required: true })
   message: string;

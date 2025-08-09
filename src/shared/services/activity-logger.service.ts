@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { EventLog, EventLogDocument, EventType, EventSeverity } from '../schemas/event-log.schema';
+import { EventLog, EventLogDocument } from '../schemas/event-log.schema';
+import { EventSeverity, EventAction } from '../../dashboard/interfaces/common';
 import { UserActivity, UserActivityDocument, ActivityType } from '../schemas/user-activity.schema';
 
 @Injectable()
@@ -15,7 +16,7 @@ export class ActivityLoggerService {
 
   // Event Logging Methods
   async logEvent(
-    type: EventType,
+    type: EventAction,
     message: string,
     severity: EventSeverity = EventSeverity.LOW,
     userId?: string,
@@ -89,7 +90,7 @@ export class ActivityLoggerService {
   async logUserLogin(userId: string, userEmail: string, userRole: string, ipAddress?: string, userAgent?: string) {
     await Promise.all([
       this.logEvent(
-        EventType.USER_LOGIN,
+        EventAction.LOGIN,
         `User ${userEmail} logged in successfully`,
         EventSeverity.LOW,
         userId,
@@ -115,7 +116,7 @@ export class ActivityLoggerService {
   async logUserLogout(userId: string, userEmail: string, userRole: string, sessionDuration?: number, ipAddress?: string, userAgent?: string) {
     await Promise.all([
       this.logEvent(
-        EventType.USER_LOGOUT,
+        EventAction.LOGOUT,
         `User ${userEmail} logged out`,
         EventSeverity.LOW,
         userId,
@@ -143,7 +144,7 @@ export class ActivityLoggerService {
   async logDashboardAccess(userId: string, userEmail: string, userRole: string, dashboardType: string, ipAddress?: string, userAgent?: string) {
     await Promise.all([
       this.logEvent(
-        EventType.DASHBOARD_ACCESS,
+        EventAction.DASHBOARD_ACCESS,
         `User ${userEmail} accessed ${dashboardType} dashboard`,
         EventSeverity.LOW,
         userId,
@@ -168,7 +169,7 @@ export class ActivityLoggerService {
 
   async logUserInvitation(invitedBy: string, invitedByEmail: string, invitedByRole: string, invitedEmail: string, role: string, ipAddress?: string, userAgent?: string) {
     await this.logEvent(
-      EventType.USER_INVITATION,
+      EventAction.USER_INVITED,
       `User ${invitedByEmail} invited ${invitedEmail} as ${role}`,
       EventSeverity.MEDIUM,
       invitedBy,
@@ -182,7 +183,7 @@ export class ActivityLoggerService {
 
   async logInvitationSuccess(invitedEmail: string, role: string) {
     await this.logEvent(
-      EventType.USER_INVITATION_SUCCESS,
+      EventAction.USER_INVITATION_SUCCESS,
       `Invitation sent successfully to ${invitedEmail} as ${role}`,
       EventSeverity.LOW,
       undefined,
@@ -194,7 +195,7 @@ export class ActivityLoggerService {
 
   async logInvitationFailed(invitedEmail: string, role: string, error: string) {
     await this.logEvent(
-      EventType.USER_INVITATION_FAILED,
+      EventAction.USER_INVITATION_FAILED,
       `Failed to send invitation to ${invitedEmail}: ${error}`,
       EventSeverity.HIGH,
       undefined,
@@ -206,7 +207,7 @@ export class ActivityLoggerService {
 
   async logPasswordReset(userId: string, userEmail: string, userRole: string, ipAddress?: string, userAgent?: string) {
     await this.logEvent(
-      EventType.PASSWORD_RESET,
+      EventAction.PASSWORD_RESET,
       `Password reset requested for ${userEmail}`,
       EventSeverity.MEDIUM,
       userId,
@@ -221,7 +222,7 @@ export class ActivityLoggerService {
   async logPasswordResetSuccess(userId: string, userEmail: string, userRole: string, ipAddress?: string, userAgent?: string) {
     await Promise.all([
       this.logEvent(
-        EventType.PASSWORD_RESET_SUCCESS,
+        EventAction.PASSWORD_RESET_SUCCESS,
         `Password reset successful for ${userEmail}`,
         EventSeverity.LOW,
         userId,
@@ -246,7 +247,7 @@ export class ActivityLoggerService {
 
   async logPasswordResetFailed(userId: string, userEmail: string, userRole: string, error: string, ipAddress?: string, userAgent?: string) {
     await this.logEvent(
-      EventType.PASSWORD_RESET_FAILED,
+      EventAction.PASSWORD_RESET_FAILED,
       `Password reset failed for ${userEmail}: ${error}`,
       EventSeverity.HIGH,
       userId,
@@ -293,31 +294,31 @@ export class ActivityLoggerService {
       
       // Password reset invitations
       this.eventLogModel.countDocuments({
-        type: EventType.PASSWORD_RESET,
+        type: EventAction.PASSWORD_RESET,
         timestamp: { $gte: monthAgo },
       }),
       
       // Pending invitations (you might need to implement this based on your invitation system)
       this.eventLogModel.countDocuments({
-        type: EventType.USER_INVITATION,
+        type: EventAction.USER_INVITED,
         timestamp: { $gte: monthAgo },
       }),
       
       // Expired invitations (you might need to implement this based on your invitation system)
       this.eventLogModel.countDocuments({
-        type: EventType.USER_INVITATION_EXPIRED,
+        type: EventAction.USER_INVITATION_EXPIRED,
         timestamp: { $gte: monthAgo },
       }),
       
       // Successful invitations
       this.eventLogModel.countDocuments({
-        type: EventType.USER_INVITATION_SUCCESS,
+        type: EventAction.USER_INVITATION_SUCCESS,
         timestamp: { $gte: monthAgo },
       }),
       
       // Failed invitations
       this.eventLogModel.countDocuments({
-        type: EventType.USER_INVITATION_FAILED,
+        type: EventAction.USER_INVITATION_FAILED,
         timestamp: { $gte: monthAgo },
       }),
       
